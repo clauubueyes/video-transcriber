@@ -65,7 +65,10 @@ class SqliteJobStore:
             self._connection.execute(
                 """
                 INSERT INTO transcription_jobs
-                    (id, source_url, language, status, created_at, updated_at, error_message)
+                    (
+                        id, source_url, language, status, created_at, updated_at,
+                        error_message
+                    )
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 self._as_row(job),

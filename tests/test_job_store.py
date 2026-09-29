@@ -29,6 +29,21 @@ def test_store_persists_valid_status_transition(store: SqliteJobStore) -> None:
     assert updated.status is JobStatus.DOWNLOADING
 
 
+def test_store_claims_each_queued_job_once(store: SqliteJobStore) -> None:
+    first = store.create("https://www.youtube.com/watch?v=first", None)
+    second = store.create("https://www.youtube.com/watch?v=second", None)
+
+    first_claim = store.claim_next_queued()
+    second_claim = store.claim_next_queued()
+
+    assert first_claim is not None
+    assert first_claim.id == first.id
+    assert first_claim.status is JobStatus.DOWNLOADING
+    assert second_claim is not None
+    assert second_claim.id == second.id
+    assert store.claim_next_queued() is None
+
+
 def test_store_rejects_invalid_status_transition(store: SqliteJobStore) -> None:
     job = store.create("https://www.youtube.com/watch?v=abc", None)
 

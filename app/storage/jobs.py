@@ -84,6 +84,38 @@ class SqliteJobStore:
             ).fetchone()
         return self._from_row(row) if row else None
 
+    def claim_next_queued(self) -> StoredJob | None:
+        """Reclama el trabajo más antiguo pendiente para un único worker."""
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                """
+                SELECT id FROM transcription_jobs
+                WHERE status = ?
+                ORDER BY created_at, id
+                LIMIT 1
+                """,
+                (JobStatus.QUEUED.value,),
+            ).fetchone()
+            if row is None:
+                return None
+
+            job_id = row["id"]
+            self._connection.execute(
+                """
+                UPDATE transcription_jobs
+                SET status = ?, updated_at = ?
+                WHERE id = ? AND status = ?
+                """,
+                (
+                    JobStatus.DOWNLOADING.value,
+                    datetime.now(UTC).isoformat(),
+                    job_id,
+                    JobStatus.QUEUED.value,
+                ),
+            )
+            claimed = self.get(job_id)
+        return claimed
+
     def update_status(
         self,
         job_id: str,

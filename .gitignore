@@ -8,7 +8,7 @@ __pycache__/
 # Datos locales y temporales de trabajos
 data/
 tmp/
-models/
+/models/
 *.sqlite3
 
 # Artefactos de construcción

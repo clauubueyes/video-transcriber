@@ -1,6 +1,8 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
-from app.models.transcriptions import JobStatus
+from app.models.transcriptions import JobStatus, Segment
 from app.storage.jobs import InvalidJobTransitionError, SqliteJobStore
 
 
@@ -49,6 +51,28 @@ def test_store_rejects_invalid_status_transition(store: SqliteJobStore) -> None:
 
     with pytest.raises(InvalidJobTransitionError, match="queued"):
         store.update_status(job.id, JobStatus.COMPLETED)
+
+
+def test_store_persists_completed_transcription_result(store: SqliteJobStore) -> None:
+    job = store.create("https://www.youtube.com/watch?v=abc", None)
+    store.update_status(job.id, JobStatus.DOWNLOADING)
+    store.update_status(job.id, JobStatus.TRANSCRIBING)
+    expires_at = datetime.now(UTC) + timedelta(hours=1)
+
+    completed = store.complete(
+        job.id,
+        language="es",
+        duration_seconds=4.2,
+        text="Hola mundo",
+        segments=[Segment(start=0, end=4.2, text="Hola mundo")],
+        expires_at=expires_at,
+    )
+
+    assert completed is not None
+    assert completed.status is JobStatus.COMPLETED
+    assert completed.text == "Hola mundo"
+    assert completed.segments == [Segment(start=0, end=4.2, text="Hola mundo")]
+    assert completed.expires_at == expires_at
 
 
 def test_store_deletes_job(store: SqliteJobStore) -> None:

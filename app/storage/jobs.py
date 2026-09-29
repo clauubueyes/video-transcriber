@@ -3,11 +3,12 @@
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from json import dumps, loads
 from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
-from app.models.transcriptions import JobStatus
+from app.models.transcriptions import JobStatus, Segment
 
 
 class InvalidJobTransitionError(ValueError):
@@ -23,6 +24,10 @@ class StoredJob:
     created_at: datetime
     updated_at: datetime
     error_message: str | None
+    duration_seconds: float | None
+    text: str | None
+    segments: list[Segment] | None
+    expires_at: datetime | None
 
 
 _ALLOWED_TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
@@ -62,6 +67,10 @@ class SqliteJobStore:
             created_at=now,
             updated_at=now,
             error_message=None,
+            duration_seconds=None,
+            text=None,
+            segments=None,
+            expires_at=None,
         )
         with self._lock, self._connection:
             self._connection.execute(
@@ -69,9 +78,10 @@ class SqliteJobStore:
                 INSERT INTO transcription_jobs
                     (
                         id, source_url, language, status, created_at, updated_at,
-                        error_message
+                        error_message, duration_seconds, transcript_text,
+                        segments_json, expires_at
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 self._as_row(job),
             )
@@ -149,6 +159,47 @@ class SqliteJobStore:
             )
         return cursor.rowcount == 1
 
+    def complete(
+        self,
+        job_id: str,
+        *,
+        language: str | None,
+        duration_seconds: float,
+        text: str,
+        segments: list[Segment],
+        expires_at: datetime,
+    ) -> StoredJob | None:
+        """Guarda el resultado temporal y completa un trabajo en transcripción."""
+        with self._lock, self._connection:
+            job = self.get(job_id)
+            if job is None:
+                return None
+            if JobStatus.COMPLETED not in _ALLOWED_TRANSITIONS[job.status]:
+                raise InvalidJobTransitionError(
+                    f"No se puede cambiar de {job.status} a {JobStatus.COMPLETED}."
+                )
+            self._connection.execute(
+                """
+                UPDATE transcription_jobs
+                SET
+                    status = ?, language = ?, duration_seconds = ?, transcript_text = ?,
+                    segments_json = ?, expires_at = ?, updated_at = ?,
+                    error_message = NULL
+                WHERE id = ?
+                """,
+                (
+                    JobStatus.COMPLETED.value,
+                    language,
+                    duration_seconds,
+                    text,
+                    dumps([segment.model_dump() for segment in segments]),
+                    expires_at.isoformat(),
+                    datetime.now(UTC).isoformat(),
+                    job_id,
+                ),
+            )
+        return self.get(job_id)
+
     def close(self) -> None:
         with self._lock:
             self._connection.close()
@@ -164,15 +215,51 @@ class SqliteJobStore:
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    error_message TEXT
+                    error_message TEXT,
+                    duration_seconds REAL,
+                    transcript_text TEXT,
+                    segments_json TEXT,
+                    expires_at TEXT
                 )
                 """
             )
+        self._add_missing_result_columns()
+
+    def _add_missing_result_columns(self) -> None:
+        columns = {
+            row["name"]
+            for row in self._connection.execute("PRAGMA table_info(transcription_jobs)")
+        }
+        required_columns = {
+            "duration_seconds": "REAL",
+            "transcript_text": "TEXT",
+            "segments_json": "TEXT",
+            "expires_at": "TEXT",
+        }
+        with self._connection:
+            for name, column_type in required_columns.items():
+                if name not in columns:
+                    self._connection.execute(
+                        "ALTER TABLE transcription_jobs "
+                        f"ADD COLUMN {name} {column_type}"
+                    )
 
     @staticmethod
     def _as_row(
         job: StoredJob,
-    ) -> tuple[str, str, str | None, str, str, str, str | None]:
+    ) -> tuple[
+        str,
+        str,
+        str | None,
+        str,
+        str,
+        str,
+        str | None,
+        float | None,
+        str | None,
+        str | None,
+        str | None,
+    ]:
         return (
             job.id,
             job.source_url,
@@ -180,7 +267,13 @@ class SqliteJobStore:
             job.status.value,
             job.created_at.isoformat(),
             job.updated_at.isoformat(),
-            None,
+            job.error_message,
+            job.duration_seconds,
+            job.text,
+            dumps([segment.model_dump() for segment in job.segments])
+            if job.segments is not None
+            else None,
+            job.expires_at.isoformat() if job.expires_at else None,
         )
 
     @staticmethod
@@ -193,4 +286,19 @@ class SqliteJobStore:
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             error_message=row["error_message"],
+            duration_seconds=row["duration_seconds"],
+            text=row["transcript_text"],
+            segments=(
+                [
+                    Segment.model_validate(segment)
+                    for segment in loads(row["segments_json"])
+                ]
+                if row["segments_json"]
+                else None
+            ),
+            expires_at=(
+                datetime.fromisoformat(row["expires_at"])
+                if row["expires_at"]
+                else None
+            ),
         )

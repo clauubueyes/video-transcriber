@@ -82,4 +82,8 @@ def _to_response(job: StoredJob) -> TranscriptionJobResponse:
         status=job.status,
         created_at=job.created_at,
         language=job.language,
+        duration_seconds=job.duration_seconds,
+        text=job.text,
+        segments=job.segments,
+        expires_at=job.expires_at,
     )

@@ -4,6 +4,8 @@ API autoalojable para transcribir vídeos desde una URL o un archivo y reutiliza
 
 El proyecto está pensado como un servicio independiente: no conoce el dominio ni la interfaz de sus clientes. Cada consumidor puede usar la transcripción para crear subtítulos, resúmenes, buscadores, notas, análisis de contenido o cualquier otro flujo propio.
 
+El plan detallado de construcción está en [docs/plan-implementacion.md](docs/plan-implementacion.md).
+
 ## Objetivo
 
 - Transcribir audio y vídeo de forma local, sin una API de transcripción de pago.
@@ -11,6 +13,9 @@ El proyecto está pensado como un servicio independiente: no conoce el dominio n
 - Aceptar trabajos asíncronos, para no bloquear una petición mientras se procesa un vídeo largo.
 - Entregar texto, idioma, segmentos y marcas de tiempo.
 - Eliminar automáticamente los archivos temporales al finalizar.
+
+> OpenAPI se empleará únicamente para documentar esta API HTTP propia. No es una
+> conexión con OpenAI, Gemini ni con ningún servicio externo de IA.
 
 ## Alcance inicial
 

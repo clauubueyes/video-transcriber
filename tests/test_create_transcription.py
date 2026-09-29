@@ -58,3 +58,34 @@ def test_create_transcription_requires_bearer_token(tmp_path) -> None:
     )
 
     assert response.status_code == 401
+
+
+def test_get_transcription_returns_the_queued_job(tmp_path) -> None:
+    client = client_with_settings(tmp_path)
+    created = client.post(
+        "/v1/transcriptions",
+        headers={"Authorization": "Bearer test-token"},
+        json={
+            "source": {"type": "url", "url": "https://www.youtube.com/watch?v=abc"},
+        },
+    )
+
+    response = client.get(
+        f"/v1/transcriptions/{created.json()['id']}",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == created.json()["id"]
+    assert response.json()["status"] == "queued"
+
+
+def test_get_transcription_returns_not_found_for_unknown_job(tmp_path) -> None:
+    client = client_with_settings(tmp_path)
+
+    response = client.get(
+        "/v1/transcriptions/trn_missing",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 404

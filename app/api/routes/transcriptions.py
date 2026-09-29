@@ -22,6 +22,25 @@ def get_job_store(request: Request) -> SqliteJobStore:
     return request.app.state.job_store
 
 
+@router.get(
+    "/{job_id}",
+    response_model=TranscriptionJobResponse,
+    dependencies=[Depends(require_service_token)],
+)
+def get_transcription(
+    job_id: str,
+    job_store: SqliteJobStore = Depends(get_job_store),
+) -> TranscriptionJobResponse:
+    """Devuelve el estado actual de un trabajo existente."""
+    job = job_store.get(job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Trabajo de transcripción no encontrado.",
+        )
+    return _to_response(job)
+
+
 @router.post(
     "",
     response_model=TranscriptionJobResponse,

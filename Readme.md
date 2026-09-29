@@ -2,7 +2,7 @@
 
 API autoalojable para transcribir vídeos desde una URL o un archivo y reutilizar el resultado desde cualquier aplicación.
 
-El proyecto está pensado como un servicio independiente: no conoce recetas, Abuela's Kitchen ni una interfaz concreta. Sus consumidores pueden usar la transcripción para crear subtítulos, resúmenes, buscadores, notas o recetas.
+El proyecto está pensado como un servicio independiente: no conoce el dominio ni la interfaz de sus clientes. Cada consumidor puede usar la transcripción para crear subtítulos, resúmenes, buscadores, notas, análisis de contenido o cualquier otro flujo propio.
 
 ## Objetivo
 
@@ -39,7 +39,7 @@ Video Transcriber API (FastAPI)
 Cliente consulta GET /v1/transcriptions/{id}
 ```
 
-La API no convertirá la transcripción en receta. Esa decisión pertenece a cada aplicación cliente. Abuela's Kitchen, por ejemplo, podrá enviar el texto a su propio extractor de recetas.
+La API se limita a obtener y transcribir el contenido audiovisual. La interpretación del texto, su almacenamiento y cualquier procesamiento posterior pertenecen a cada aplicación cliente.
 
 ## API propuesta
 
@@ -121,11 +121,11 @@ Elimina de inmediato el resultado y los archivos temporales asociados.
 
 El perfil inicial será CPU con un modelo `small` cuantizado. GPU y modelos mayores serán opciones de despliegue, no requisitos para arrancar localmente.
 
-## Integración con Abuela's Kitchen
+## Integración de clientes
 
-Abuela's Kitchen no llamará directamente al transcriptor desde el navegador. Su backend enviará el trabajo a esta API con el token secreto, consultará el estado y devolverá la transcripción terminada a la interfaz. Así el token no queda expuesto y otros proyectos pueden reutilizar el mismo servicio.
+Las aplicaciones cliente no deben llamar al transcriptor con un token secreto desde el navegador. Su backend envía el trabajo a esta API, consulta el estado y entrega el resultado a su interfaz. Así se protege el token y varios proyectos pueden reutilizar el servicio.
 
-Variables de entorno previstas en el proyecto consumidor:
+Variables de entorno previstas en cada proyecto consumidor:
 
 ```env
 VIDEO_TRANSCRIBER_URL=https://transcriber.example.com
@@ -140,7 +140,7 @@ VIDEO_TRANSCRIBER_TOKEN=replace-with-a-secret
 4. Añadir subtítulos y extracción de audio para YouTube.
 5. Integrar `faster-whisper` y segmentos temporizados.
 6. Añadir límites, limpieza automática, trazabilidad y pruebas de carga.
-7. Conectar Abuela's Kitchen como primer cliente.
+7. Publicar ejemplos de integración y clientes de referencia.
 
 ## Requisitos de ejecución
 

@@ -45,6 +45,8 @@ class SqliteJobStore:
     """Almacena metadatos de trabajos sin conservar su audio o resultados."""
 
     def __init__(self, database_path: str | Path) -> None:
+        if str(database_path) != ":memory:":
+            Path(database_path).parent.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(database_path, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
         self._lock = RLock()

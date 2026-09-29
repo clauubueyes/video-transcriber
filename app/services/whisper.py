@@ -43,10 +43,6 @@ class FasterWhisperTranscriber:
         compute_type: str = "int8",
         model_factory: Callable[[str, str, str], WhisperModel] | None = None,
     ) -> None:
-        if not model_path.is_dir():
-            raise LocalModelNotFoundError(
-                f"No existe un modelo local en {model_path}."
-            )
         self._model_path = model_path
         self._device = device
         self._compute_type = compute_type
@@ -79,6 +75,10 @@ class FasterWhisperTranscriber:
 
     def _get_model(self) -> WhisperModel:
         if self._model is None:
+            if not self._model_path.is_dir():
+                raise LocalModelNotFoundError(
+                    f"No existe un modelo local en {self._model_path}."
+                )
             self._model = self._model_factory(
                 str(self._model_path),
                 self._device,

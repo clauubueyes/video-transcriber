@@ -64,5 +64,9 @@ def test_transcriber_uses_local_model_and_caches_it(tmp_path) -> None:
 
 
 def test_transcriber_requires_preinstalled_local_model(tmp_path) -> None:
+    transcriber = FasterWhisperTranscriber(tmp_path / "missing")
+    audio_path = tmp_path / "video.m4a"
+    audio_path.write_bytes(b"audio")
+
     with pytest.raises(LocalModelNotFoundError, match="modelo local"):
-        FasterWhisperTranscriber(tmp_path / "missing")
+        transcriber.transcribe(audio_path, "es")

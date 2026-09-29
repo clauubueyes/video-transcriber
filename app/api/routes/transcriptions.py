@@ -1,6 +1,6 @@
 """Rutas HTTP para crear trabajos de transcripción."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.api.dependencies import get_settings, require_service_token
 from app.core.config import Settings
@@ -39,6 +39,20 @@ def get_transcription(
             detail="Trabajo de transcripción no encontrado.",
         )
     return _to_response(job)
+
+
+@router.delete(
+    "/{job_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_service_token)],
+)
+def delete_transcription(
+    job_id: str,
+    job_store: SqliteJobStore = Depends(get_job_store),
+) -> Response:
+    """Elimina un trabajo y permite tratar su cancelación como idempotente."""
+    job_store.delete(job_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

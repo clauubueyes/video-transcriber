@@ -89,3 +89,24 @@ def test_get_transcription_returns_not_found_for_unknown_job(tmp_path) -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_delete_transcription_removes_a_job_idempotently(tmp_path) -> None:
+    client = client_with_settings(tmp_path)
+    headers = {"Authorization": "Bearer test-token"}
+    created = client.post(
+        "/v1/transcriptions",
+        headers=headers,
+        json={
+            "source": {"type": "url", "url": "https://www.youtube.com/watch?v=abc"},
+        },
+    )
+    job_id = created.json()["id"]
+
+    deleted = client.delete(f"/v1/transcriptions/{job_id}", headers=headers)
+    repeated = client.delete(f"/v1/transcriptions/{job_id}", headers=headers)
+    retrieved = client.get(f"/v1/transcriptions/{job_id}", headers=headers)
+
+    assert deleted.status_code == 204
+    assert repeated.status_code == 204
+    assert retrieved.status_code == 404

@@ -75,6 +75,33 @@ def test_store_persists_completed_transcription_result(store: SqliteJobStore) ->
     assert completed.expires_at == expires_at
 
 
+def test_store_expires_and_clears_due_transcription_results(
+    store: SqliteJobStore,
+) -> None:
+    job = store.create("https://www.youtube.com/watch?v=abc", None)
+    store.update_status(job.id, JobStatus.DOWNLOADING)
+    store.update_status(job.id, JobStatus.TRANSCRIBING)
+    store.complete(
+        job.id,
+        language="es",
+        duration_seconds=4.2,
+        text="Hola mundo",
+        segments=[Segment(start=0, end=4.2, text="Hola mundo")],
+        expires_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+
+    expired_count = store.expire_due_results(datetime.now(UTC))
+    expired = store.get(job.id)
+
+    assert expired_count == 1
+    assert expired is not None
+    assert expired.status is JobStatus.EXPIRED
+    assert expired.text is None
+    assert expired.segments is None
+    assert expired.duration_seconds is None
+    assert expired.expires_at is None
+
+
 def test_store_deletes_job(store: SqliteJobStore) -> None:
     job = store.create("https://www.youtube.com/watch?v=abc", None)
 

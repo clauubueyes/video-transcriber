@@ -159,6 +159,26 @@ class SqliteJobStore:
             )
         return cursor.rowcount == 1
 
+    def expire_due_results(self, now: datetime) -> int:
+        """Marca resultados vencidos como expirados y elimina su contenido."""
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                """
+                UPDATE transcription_jobs
+                SET
+                    status = ?, duration_seconds = NULL, transcript_text = NULL,
+                    segments_json = NULL, expires_at = NULL, updated_at = ?
+                WHERE status = ? AND expires_at IS NOT NULL AND expires_at <= ?
+                """,
+                (
+                    JobStatus.EXPIRED.value,
+                    now.isoformat(),
+                    JobStatus.COMPLETED.value,
+                    now.isoformat(),
+                ),
+            )
+        return cursor.rowcount
+
     def complete(
         self,
         job_id: str,

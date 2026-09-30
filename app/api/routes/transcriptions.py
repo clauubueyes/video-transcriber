@@ -1,6 +1,14 @@
 """Rutas HTTP para crear trabajos de transcripción."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 
 from app.api.dependencies import get_settings, require_service_token
 from app.core.config import Settings
@@ -8,11 +16,13 @@ from app.models.transcriptions import (
     CreateTranscriptionRequest,
     TranscriptionJobResponse,
 )
+from app.services.processor_factory import create_local_processor
 from app.services.source_validation import (
     SourceNotAllowedError,
     validate_allowed_source,
 )
 from app.storage.jobs import SqliteJobStore, StoredJob
+from app.workers.job_worker import JobWorker
 
 router = APIRouter(prefix="/v1/transcriptions", tags=["transcriptions"])
 
@@ -20,6 +30,27 @@ router = APIRouter(prefix="/v1/transcriptions", tags=["transcriptions"])
 def get_job_store(request: Request) -> SqliteJobStore:
     """Obtiene el almacén asociado a la instancia FastAPI."""
     return request.app.state.job_store
+
+
+def get_job_worker(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    job_store: SqliteJobStore = Depends(get_job_store),
+) -> JobWorker:
+    """Crea una única instancia local del worker por proceso FastAPI."""
+    worker = getattr(request.app.state, "job_worker", None)
+    if worker is None:
+        worker = JobWorker(
+            job_store,
+            create_local_processor(
+                settings.model_path,
+                device=settings.whisper_device,
+                compute_type=settings.whisper_compute_type,
+            ),
+            settings.result_ttl_seconds,
+        )
+        request.app.state.job_worker = worker
+    return worker
 
 
 @router.get(
@@ -63,8 +94,10 @@ def delete_transcription(
 )
 def create_transcription(
     payload: CreateTranscriptionRequest,
+    background_tasks: BackgroundTasks,
     settings: Settings = Depends(get_settings),
     job_store: SqliteJobStore = Depends(get_job_store),
+    worker: JobWorker = Depends(get_job_worker),
 ) -> TranscriptionJobResponse:
     """Registra un trabajo validado para su ejecución posterior."""
     try:
@@ -73,6 +106,7 @@ def create_transcription(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
     job = job_store.create(str(payload.source.url), payload.language)
+    background_tasks.add_task(worker.process_next)
     return _to_response(job)
 
 

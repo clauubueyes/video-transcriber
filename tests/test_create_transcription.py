@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_settings
+from app.api.routes.transcriptions import get_job_worker
 from app.core.config import Settings
 from app.main import create_app
 
@@ -11,7 +12,16 @@ def client_with_settings(tmp_path) -> TestClient:
         token="test-token",
         allowed_domains="youtube.com,www.youtube.com,youtu.be",
     )
+    app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
     return TestClient(app)
+
+
+class RecordingWorker:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def process_next(self) -> None:
+        self.calls += 1
 
 
 def test_create_transcription_queues_a_valid_youtube_job(tmp_path) -> None:
@@ -30,6 +40,25 @@ def test_create_transcription_queues_a_valid_youtube_job(tmp_path) -> None:
     assert response.json()["id"].startswith("trn_")
     assert response.json()["status"] == "queued"
     assert response.json()["language"] == "es"
+
+
+def test_create_transcription_schedules_the_local_worker(tmp_path) -> None:
+    app = create_app(tmp_path / "jobs.sqlite3")
+    worker = RecordingWorker()
+    app.dependency_overrides[get_settings] = lambda: Settings(token="test-token")
+    app.dependency_overrides[get_job_worker] = lambda: worker
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/transcriptions",
+        headers={"Authorization": "Bearer test-token"},
+        json={
+            "source": {"type": "url", "url": "https://www.youtube.com/watch?v=abc"},
+        },
+    )
+
+    assert response.status_code == 202
+    assert worker.calls == 1
 
 
 def test_create_transcription_rejects_unconfigured_providers(tmp_path) -> None:

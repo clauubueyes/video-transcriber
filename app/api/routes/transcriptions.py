@@ -1,5 +1,7 @@
 """Rutas HTTP para crear trabajos de transcripción."""
 
+from datetime import UTC, datetime
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -63,6 +65,7 @@ def get_transcription(
     job_store: SqliteJobStore = Depends(get_job_store),
 ) -> TranscriptionJobResponse:
     """Devuelve el estado actual de un trabajo existente."""
+    job_store.expire_due_results(datetime.now(UTC))
     job = job_store.get(job_id)
     if job is None:
         raise HTTPException(

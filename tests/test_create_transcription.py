@@ -1,9 +1,12 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_settings
 from app.api.routes.transcriptions import get_job_worker
 from app.core.config import Settings
 from app.main import create_app
+from app.models.transcriptions import JobStatus, Segment
 
 
 def client_with_settings(tmp_path) -> TestClient:
@@ -118,6 +121,33 @@ def test_get_transcription_returns_not_found_for_unknown_job(tmp_path) -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_get_transcription_expires_due_result_before_responding(tmp_path) -> None:
+    app = create_app(tmp_path / "jobs.sqlite3")
+    app.dependency_overrides[get_settings] = lambda: Settings(token="test-token")
+    app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
+    job = app.state.job_store.create("https://www.youtube.com/watch?v=abc", "es")
+    app.state.job_store.update_status(job.id, JobStatus.DOWNLOADING)
+    app.state.job_store.update_status(job.id, JobStatus.TRANSCRIBING)
+    app.state.job_store.complete(
+        job.id,
+        language="es",
+        duration_seconds=1,
+        text="Caducada",
+        segments=[Segment(start=0, end=1, text="Caducada")],
+        expires_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        f"/v1/transcriptions/{job.id}",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "expired"
+    assert response.json()["text"] is None
 
 
 def test_delete_transcription_removes_a_job_idempotently(tmp_path) -> None:

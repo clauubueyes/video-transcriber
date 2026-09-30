@@ -30,3 +30,29 @@ def test_parse_vtt_ignores_non_cue_blocks() -> None:
     assert parsed.text == ""
     assert parsed.duration_seconds == 0
     assert parsed.segments == []
+
+
+def test_parse_vtt_repairs_encoding_and_removes_live_caption_overlap() -> None:
+    parsed = parse_vtt(
+        """WEBVTT
+
+00:00:00.000 --> 00:00:02.000
+Gente, Â¿cÃ³mo estÃ¡is? Bienvenidos al
+
+00:00:01.000 --> 00:00:04.000
+Gente, Â¿cÃ³mo estÃ¡is? Bienvenidos al curso de desarrollo
+
+00:00:03.000 --> 00:00:06.000
+curso de desarrollo con IA
+"""
+    )
+
+    assert (
+        parsed.text
+        == "Gente, ¿cómo estáis? Bienvenidos al curso de desarrollo con IA"
+    )
+    assert [segment.model_dump() for segment in parsed.segments] == [
+        {"start": 0, "end": 2, "text": "Gente, ¿cómo estáis? Bienvenidos al"},
+        {"start": 2, "end": 4, "text": "curso de desarrollo"},
+        {"start": 4, "end": 6, "text": "con IA"},
+    ]

@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from html import unescape
 from pathlib import Path
 
 from app.models.transcriptions import Segment
@@ -11,6 +12,8 @@ _TIMING_LINE = re.compile(
     r"(?P<end>(?:\d{2,}:)?\d{2}:\d{2}\.\d{3})"
 )
 _TAGS = re.compile(r"<[^>]+>")
+_MOJIBAKE_MARKERS = ("Ã", "Â", "â")
+_MINIMUM_OVERLAP = 12
 
 
 @dataclass(frozen=True)
@@ -44,14 +47,20 @@ def parse_vtt(content: str) -> ParsedSubtitles:
         if timing is None:
             continue
 
-        text = " ".join(lines[timing_index + 1 :])
-        text = _TAGS.sub("", text).strip()
+        text = _normalize_subtitle_text(" ".join(lines[timing_index + 1 :]))
         if not text:
             continue
+        start = _timestamp_to_seconds(timing.group("start"))
+        end = _timestamp_to_seconds(timing.group("end"))
+        if segments:
+            text = _remove_previous_overlap(text, segments[-1].text)
+            if not text:
+                continue
+            start = _start_after_previous_segment(start, end, segments[-1])
         segments.append(
             Segment(
-                start=_timestamp_to_seconds(timing.group("start")),
-                end=_timestamp_to_seconds(timing.group("end")),
+                start=start,
+                end=end,
                 text=text,
             )
         )
@@ -69,3 +78,36 @@ def _timestamp_to_seconds(timestamp: str) -> float:
     minutes = int(parts.pop())
     hours = int(parts.pop()) if parts else 0
     return hours * 3600 + minutes * 60 + seconds
+
+
+def _normalize_subtitle_text(text: str) -> str:
+    text = unescape(_TAGS.sub("", text)).strip()
+    for _ in range(2):
+        if not any(marker in text for marker in _MOJIBAKE_MARKERS):
+            break
+        try:
+            repaired = text.encode("latin-1").decode("utf-8")
+        except UnicodeError:
+            break
+        if repaired == text:
+            break
+        text = repaired
+    return " ".join(text.split())
+
+
+def _remove_previous_overlap(text: str, previous_text: str) -> str:
+    if text == previous_text:
+        return ""
+    if text.startswith(previous_text):
+        return text[len(previous_text) :].strip()
+
+    maximum = min(len(text), len(previous_text))
+    for length in range(maximum, _MINIMUM_OVERLAP - 1, -1):
+        if previous_text.endswith(text[:length]):
+            return text[length:].strip()
+    return text
+
+
+def _start_after_previous_segment(start: float, end: float, previous: Segment) -> float:
+    adjusted_start = max(start, previous.end)
+    return adjusted_start if adjusted_start < end else start

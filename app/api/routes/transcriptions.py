@@ -1,5 +1,6 @@
 """Rutas HTTP para crear trabajos de transcripción."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from fastapi import (
@@ -20,6 +21,11 @@ from app.models.transcriptions import (
     TranscriptionJobResponse,
 )
 from app.services.duration import VideoDurationProbe, YtDlpVideoDurationProbe
+from app.services.network_validation import (
+    SourceHostResolutionError,
+    UnsafeSourceHostError,
+    validate_public_host,
+)
 from app.services.processor_factory import create_local_processor
 from app.services.source_validation import (
     SourceNotAllowedError,
@@ -76,6 +82,11 @@ def get_token_rate_limiter(
         )
         request.app.state.token_rate_limiter = limiter
     return limiter
+
+
+def get_public_host_validator() -> Callable[[str], object]:
+    """Expone la validación DNS como dependencia sustituible en pruebas."""
+    return validate_public_host
 
 
 def get_job_runner(
@@ -142,12 +153,21 @@ def create_transcription(
     runner: BoundedJobRunner | None = Depends(get_job_runner),
     token_id: str = Depends(require_service_token),
     rate_limiter: TokenRateLimiter = Depends(get_token_rate_limiter),
+    host_validator: Callable[[str], object] = Depends(get_public_host_validator),
 ) -> TranscriptionJobResponse:
     """Registra un trabajo validado para su ejecución posterior."""
     try:
         validate_allowed_source(payload.source.url, settings.allowed_domain_set)
     except SourceNotAllowedError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+    try:
+        host_validator(payload.source.url.host)
+    except (SourceHostResolutionError, UnsafeSourceHostError) as error:
+        raise HTTPException(
+            status_code=400,
+            detail="No se ha podido validar el origen del vídeo.",
+        ) from error
 
     if not rate_limiter.allow(token_id):
         raise HTTPException(

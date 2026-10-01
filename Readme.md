@@ -156,5 +156,5 @@ El software no requerirá una API de pago. Sí necesita una máquina que esté e
 
 Implementación local en progreso. La API, trabajos SQLite, subtítulos VTT,
 procesamiento local con `faster-whisper`, límites de duración y concurrencia,
-caducidad y pruebas ya están disponibles. Docker Compose y el worker separado
-para despliegues de producción siguen pendientes.
+caducidad, Docker Compose y pruebas ya están disponibles. El worker separado
+para despliegues de producción sigue pendiente.

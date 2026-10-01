@@ -39,6 +39,19 @@ Inicia la API:
 Comprueba el estado en `http://127.0.0.1:8000/health` y explora la API en
 `http://127.0.0.1:8000/docs`.
 
+## Docker Compose
+
+Con Docker instalado, crea `.env` como en el apartado anterior y ejecuta:
+
+```powershell
+docker compose up --build
+```
+
+La base SQLite se conserva en `data/`; los modelos locales se montan de solo
+lectura desde `models/`. Para usar Whisper sin subtítulos, coloca el modelo en
+`models/whisper-small` o ajusta `VIDEO_TRANSCRIBER_MODEL_PATH` a una ruta bajo
+ese volumen.
+
 ## Crear y consultar un trabajo
 
 ```powershell

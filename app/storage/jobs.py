@@ -8,7 +8,7 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
-from app.models.transcriptions import JobStatus, Segment
+from app.models.transcriptions import JobStatus, Segment, SourceType
 
 
 class InvalidJobTransitionError(ValueError):
@@ -18,6 +18,7 @@ class InvalidJobTransitionError(ValueError):
 @dataclass(frozen=True)
 class StoredJob:
     id: str
+    source_type: SourceType
     source_url: str
     language: str | None
     status: JobStatus
@@ -57,10 +58,16 @@ class SqliteJobStore:
         self._lock = RLock()
         self._create_schema()
 
-    def create(self, source_url: str, language: str | None) -> StoredJob:
+    def create(
+        self,
+        source_url: str,
+        language: str | None,
+        source_type: SourceType = SourceType.URL,
+    ) -> StoredJob:
         now = datetime.now(UTC)
         job = StoredJob(
             id=f"trn_{uuid4().hex}",
+            source_type=source_type,
             source_url=source_url,
             language=language,
             status=JobStatus.QUEUED,
@@ -77,11 +84,11 @@ class SqliteJobStore:
                 """
                 INSERT INTO transcription_jobs
                     (
-                        id, source_url, language, status, created_at, updated_at,
-                        error_message, duration_seconds, transcript_text,
+                        id, source_type, source_url, language, status, created_at,
+                        updated_at, error_message, duration_seconds, transcript_text,
                         segments_json, expires_at
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 self._as_row(job),
             )
@@ -230,6 +237,7 @@ class SqliteJobStore:
                 """
                 CREATE TABLE IF NOT EXISTS transcription_jobs (
                     id TEXT PRIMARY KEY,
+                    source_type TEXT NOT NULL DEFAULT 'url',
                     source_url TEXT NOT NULL,
                     language TEXT,
                     status TEXT NOT NULL,
@@ -243,14 +251,15 @@ class SqliteJobStore:
                 )
                 """
             )
-        self._add_missing_result_columns()
+        self._migrate_schema()
 
-    def _add_missing_result_columns(self) -> None:
+    def _migrate_schema(self) -> None:
         columns = {
             row["name"]
             for row in self._connection.execute("PRAGMA table_info(transcription_jobs)")
         }
         required_columns = {
+            "source_type": "TEXT NOT NULL DEFAULT 'url'",
             "duration_seconds": "REAL",
             "transcript_text": "TEXT",
             "segments_json": "TEXT",
@@ -270,6 +279,7 @@ class SqliteJobStore:
     ) -> tuple[
         str,
         str,
+        str,
         str | None,
         str,
         str,
@@ -282,6 +292,7 @@ class SqliteJobStore:
     ]:
         return (
             job.id,
+            job.source_type.value,
             job.source_url,
             job.language,
             job.status.value,
@@ -300,6 +311,7 @@ class SqliteJobStore:
     def _from_row(row: sqlite3.Row) -> StoredJob:
         return StoredJob(
             id=row["id"],
+            source_type=SourceType(row["source_type"]),
             source_url=row["source_url"],
             language=row["language"],
             status=JobStatus(row["status"]),

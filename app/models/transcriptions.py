@@ -16,6 +16,11 @@ class JobStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class SourceType(StrEnum):
+    URL = "url"
+    FILE = "file"
+
+
 class TranscriptionSource(BaseModel):
     type: Literal["url"]
     url: AnyHttpUrl

@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.models.transcriptions import JobStatus, Segment
+from app.models.transcriptions import JobStatus, Segment, SourceType
 from app.storage.jobs import InvalidJobTransitionError, SqliteJobStore
 
 
@@ -20,6 +20,15 @@ def test_store_creates_and_reads_a_queued_job(store: SqliteJobStore) -> None:
 
     assert job.id.startswith("trn_")
     assert restored == job
+
+
+def test_store_persists_file_source_type(store: SqliteJobStore) -> None:
+    job = store.create("tmp/upload.mp3", "es", source_type=SourceType.FILE)
+
+    restored = store.get(job.id)
+
+    assert restored is not None
+    assert restored.source_type is SourceType.FILE
 
 
 def test_store_persists_valid_status_transition(store: SqliteJobStore) -> None:

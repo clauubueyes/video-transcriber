@@ -7,3 +7,12 @@ services:
     volumes:
       - ./data:/app/data
       - ./models:/app/models:ro
+
+  video-transcriber-worker:
+    build: .
+    profiles: ["worker"]
+    command: ["python", "-m", "app.workers.cli"]
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models:ro

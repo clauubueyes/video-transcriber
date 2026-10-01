@@ -27,6 +27,8 @@ ni versiones este archivo.
 VIDEO_TRANSCRIBER_TOKEN=un-secreto-local-largo
 VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS=1800
 VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS=1
+VIDEO_TRANSCRIBER_MAX_JOBS_PER_TOKEN=10
+VIDEO_TRANSCRIBER_RATE_LIMIT_WINDOW_SECONDS=3600
 VIDEO_TRANSCRIBER_MODEL_PATH=models/whisper-small
 ```
 
@@ -51,6 +53,17 @@ La base SQLite se conserva en `data/`; los modelos locales se montan de solo
 lectura desde `models/`. Para usar Whisper sin subtítulos, coloca el modelo en
 `models/whisper-small` o ajusta `VIDEO_TRANSCRIBER_MODEL_PATH` a una ruta bajo
 ese volumen.
+
+Para usar el worker separado con Docker, configura la API para que solo encole
+trabajos y arranca ambos servicios:
+
+```env
+VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API=false
+```
+
+```powershell
+docker compose --profile worker up --build
+```
 
 ## Crear y consultar un trabajo
 
@@ -97,6 +110,10 @@ Invoke-RestMethod -Method Delete `
 
 El valor `VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS` limita procesamientos locales
 simultáneos para no saturar CPU o GPU.
+
+`VIDEO_TRANSCRIBER_MAX_JOBS_PER_TOKEN` limita cuántos trabajos puede crear un
+token durante `VIDEO_TRANSCRIBER_RATE_LIMIT_WINDOW_SECONDS`. Si se supera, la
+API devuelve `429 Too Many Requests` junto con la cabecera `Retry-After`.
 
 ## Worker separado
 

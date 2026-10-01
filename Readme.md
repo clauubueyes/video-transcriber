@@ -112,6 +112,7 @@ Elimina de inmediato el resultado y los archivos temporales asociados.
 - Cola con concurrencia limitada para evitar saturar CPU/GPU.
 - No guardar audio, vídeo o transcripciones más allá del periodo configurado.
 - No versionar tokens, modelos descargados, audios ni resultados de usuarios en Git.
+- Límite configurable de trabajos por token y ventana temporal para proteger la cola.
 
 ## Tecnología prevista
 

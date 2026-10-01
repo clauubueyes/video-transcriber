@@ -66,8 +66,10 @@ def get_job_runner(
     request: Request,
     settings: Settings = Depends(get_settings),
     worker: JobWorker = Depends(get_job_worker),
-) -> BoundedJobRunner:
+) -> BoundedJobRunner | None:
     """Devuelve el ejecutor local limitado para esta instancia de la API."""
+    if not settings.process_jobs_in_api:
+        return None
     runner = getattr(request.app.state, "job_runner", None)
     if runner is None:
         runner = BoundedJobRunner(worker, settings.max_concurrent_jobs)
@@ -121,7 +123,7 @@ def create_transcription(
     settings: Settings = Depends(get_settings),
     job_store: SqliteJobStore = Depends(get_job_store),
     duration_probe: VideoDurationProbe = Depends(get_video_duration_probe),
-    runner: BoundedJobRunner = Depends(get_job_runner),
+    runner: BoundedJobRunner | None = Depends(get_job_runner),
 ) -> TranscriptionJobResponse:
     """Registra un trabajo validado para su ejecución posterior."""
     try:
@@ -142,7 +144,8 @@ def create_transcription(
         )
 
     job = job_store.create(str(payload.source.url), payload.language)
-    background_tasks.add_task(runner.run_pending)
+    if runner is not None:
+        background_tasks.add_task(runner.run_pending)
     return _to_response(job)
 
 

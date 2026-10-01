@@ -74,6 +74,30 @@ def test_create_transcription_schedules_the_local_worker(tmp_path) -> None:
     assert worker.calls == 1
 
 
+def test_create_transcription_can_leave_job_for_standalone_worker(tmp_path) -> None:
+    app = create_app(tmp_path / "jobs.sqlite3")
+    worker = RecordingWorker()
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        token="test-token",
+        process_jobs_in_api=False,
+    )
+    app.dependency_overrides[get_job_worker] = lambda: worker
+    app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(60)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/transcriptions",
+        headers={"Authorization": "Bearer test-token"},
+        json={
+            "source": {"type": "url", "url": "https://www.youtube.com/watch?v=abc"},
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
+    assert worker.calls == 0
+
+
 def test_create_transcription_rejects_unconfigured_providers(tmp_path) -> None:
     client = client_with_settings(tmp_path)
 

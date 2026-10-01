@@ -101,8 +101,13 @@ simultáneos para no saturar CPU o GPU.
 ## Worker separado
 
 La API procesa la cola localmente por defecto. Para usar un proceso independiente
-con la misma base SQLite, detén la API o evita crear trabajos mientras verificas
-la configuración y ejecuta una pasada:
+con la misma base SQLite, establece lo siguiente en `.env` y reinicia la API:
+
+```env
+VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API=false
+```
+
+Después ejecuta una pasada:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.workers.cli --once

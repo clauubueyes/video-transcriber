@@ -1,6 +1,7 @@
 """Dependencias compartidas por las rutas protegidas."""
 
 from functools import lru_cache
+from hashlib import sha256
 from secrets import compare_digest
 
 from fastapi import Depends, HTTPException, status
@@ -20,7 +21,7 @@ def get_settings() -> Settings:
 def require_service_token(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     settings: Settings = Depends(get_settings),
-) -> None:
+) -> str:
     """Rechaza solicitudes sin el token de servicio configurado."""
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -33,3 +34,4 @@ def require_service_token(
 
     if not compare_digest(credentials.credentials, settings.token.get_secret_value()):
         raise unauthorized
+    return sha256(credentials.credentials.encode()).hexdigest()

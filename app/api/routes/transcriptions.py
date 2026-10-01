@@ -14,6 +14,7 @@ from fastapi import (
 
 from app.api.dependencies import get_settings, require_service_token
 from app.core.config import Settings
+from app.core.rate_limit import TokenRateLimiter
 from app.models.transcriptions import (
     CreateTranscriptionRequest,
     TranscriptionJobResponse,
@@ -60,6 +61,21 @@ def get_job_worker(
 def get_video_duration_probe() -> VideoDurationProbe:
     """Obtiene la sonda local de metadatos usada antes de encolar trabajo."""
     return YtDlpVideoDurationProbe()
+
+
+def get_token_rate_limiter(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> TokenRateLimiter:
+    """Mantiene el límite de trabajos por token durante la vida del proceso."""
+    limiter = getattr(request.app.state, "token_rate_limiter", None)
+    if limiter is None:
+        limiter = TokenRateLimiter(
+            settings.max_jobs_per_token,
+            settings.rate_limit_window_seconds,
+        )
+        request.app.state.token_rate_limiter = limiter
+    return limiter
 
 
 def get_job_runner(
@@ -124,12 +140,21 @@ def create_transcription(
     job_store: SqliteJobStore = Depends(get_job_store),
     duration_probe: VideoDurationProbe = Depends(get_video_duration_probe),
     runner: BoundedJobRunner | None = Depends(get_job_runner),
+    token_id: str = Depends(require_service_token),
+    rate_limiter: TokenRateLimiter = Depends(get_token_rate_limiter),
 ) -> TranscriptionJobResponse:
     """Registra un trabajo validado para su ejecución posterior."""
     try:
         validate_allowed_source(payload.source.url, settings.allowed_domain_set)
     except SourceNotAllowedError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+    if not rate_limiter.allow(token_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Has alcanzado el límite de trabajos para este periodo.",
+            headers={"Retry-After": str(settings.rate_limit_window_seconds)},
+        )
 
     duration = duration_probe.get_duration_seconds(str(payload.source.url))
     if duration is None:

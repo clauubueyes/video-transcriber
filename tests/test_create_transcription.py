@@ -173,6 +173,28 @@ def test_create_transcription_rejects_videos_without_duration(tmp_path) -> None:
     }
 
 
+def test_create_transcription_limits_jobs_per_token(tmp_path) -> None:
+    app = create_app(tmp_path / "jobs.sqlite3")
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        token="test-token",
+        max_jobs_per_token=1,
+    )
+    app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
+    app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(60)
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer test-token"}
+    payload = {
+        "source": {"type": "url", "url": "https://www.youtube.com/watch?v=abc"},
+    }
+
+    first = client.post("/v1/transcriptions", headers=headers, json=payload)
+    second = client.post("/v1/transcriptions", headers=headers, json=payload)
+
+    assert first.status_code == 202
+    assert second.status_code == 429
+    assert second.headers["Retry-After"] == "3600"
+
+
 def test_get_transcription_returns_the_queued_job(tmp_path) -> None:
     client = client_with_settings(tmp_path)
     created = client.post(

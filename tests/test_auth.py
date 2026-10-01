@@ -1,3 +1,5 @@
+from hashlib import sha256
+
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -15,7 +17,9 @@ def test_valid_bearer_token_is_accepted() -> None:
         scheme="Bearer", credentials="test-token"
     )
 
-    assert require_service_token(credentials, settings()) is None
+    assert require_service_token(credentials, settings()) == sha256(
+        b"test-token"
+    ).hexdigest()
 
 
 @pytest.mark.parametrize(

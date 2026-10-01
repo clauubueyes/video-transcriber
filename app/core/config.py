@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     database_path: Path = Path("data/transcriber.sqlite3")
     worker_poll_interval_seconds: float = Field(default=2, gt=0)
     process_jobs_in_api: bool = True
+    max_jobs_per_token: int = Field(default=10, ge=1)
+    rate_limit_window_seconds: int = Field(default=3600, ge=1)
     model_path: Path = Path("models/whisper-small")
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"

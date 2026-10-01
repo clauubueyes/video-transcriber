@@ -3,9 +3,10 @@
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Protocol
 
-from app.models.transcriptions import JobStatus, Segment
+from app.models.transcriptions import JobStatus, Segment, SourceType
 from app.storage.jobs import SqliteJobStore, StoredJob
 
 logger = logging.getLogger("video_transcriber.worker")
@@ -31,6 +32,16 @@ class TranscriptionProcessor(Protocol):
     ) -> TranscriptionResult: ...
 
 
+class FileTranscriptionProcessor(Protocol):
+    """Adaptador que transcribe un fichero local ya recibido por la aplicación."""
+
+    def process(
+        self,
+        source_path: Path,
+        requested_language: str | None,
+    ) -> TranscriptionResult: ...
+
+
 class JobWorker:
     """Procesa un trabajo pendiente por invocación, con resultados temporales."""
 
@@ -39,10 +50,12 @@ class JobWorker:
         store: SqliteJobStore,
         processor: TranscriptionProcessor,
         result_ttl_seconds: int,
+        file_processor: FileTranscriptionProcessor | None = None,
     ) -> None:
         self._store = store
         self._processor = processor
         self._result_ttl_seconds = result_ttl_seconds
+        self._file_processor = file_processor
 
     def process_next(self) -> StoredJob | None:
         """Reclama y procesa un trabajo o devuelve ``None`` si la cola está vacía."""
@@ -64,10 +77,7 @@ class JobWorker:
                 extra={"job_id": active_job.id, "status": active_job.status.value},
             )
 
-            result = self._processor.process(
-                active_job.source_url,
-                active_job.language,
-            )
+            result = self._process_source(active_job)
             completed_job = self._store.complete(
                 active_job.id,
                 language=result.language,
@@ -99,3 +109,22 @@ class JobWorker:
                     extra={"job_id": failed_job.id, "status": failed_job.status.value},
                 )
             return failed_job
+        finally:
+            self._remove_temporary_upload(job)
+
+    def _process_source(self, job: StoredJob) -> TranscriptionResult:
+        if job.source_type is SourceType.FILE:
+            if self._file_processor is None:
+                message = "No hay procesador configurado para ficheros locales."
+                raise RuntimeError(message)
+            return self._file_processor.process(Path(job.source_url), job.language)
+        return self._processor.process(job.source_url, job.language)
+
+    @staticmethod
+    def _remove_temporary_upload(job: StoredJob) -> None:
+        if job.source_type is not SourceType.FILE:
+            return
+        try:
+            Path(job.source_url).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("temporary_upload_cleanup_failed", extra={"job_id": job.id})

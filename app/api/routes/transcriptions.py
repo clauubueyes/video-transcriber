@@ -26,7 +26,10 @@ from app.services.network_validation import (
     UnsafeSourceHostError,
     validate_public_host,
 )
-from app.services.processor_factory import create_local_processor
+from app.services.processor_factory import (
+    create_local_file_processor,
+    create_local_processor,
+)
 from app.services.redirect_validation import (
     UnsafeRedirectError,
     validate_redirect_chain,
@@ -63,6 +66,11 @@ def get_job_worker(
                 compute_type=settings.whisper_compute_type,
             ),
             settings.result_ttl_seconds,
+            create_local_file_processor(
+                settings.model_path,
+                device=settings.whisper_device,
+                compute_type=settings.whisper_compute_type,
+            ),
         )
         request.app.state.job_worker = worker
     return worker

@@ -1,4 +1,6 @@
-from app.models.transcriptions import JobStatus, Segment
+from pathlib import Path
+
+from app.models.transcriptions import JobStatus, Segment, SourceType
 from app.storage.jobs import SqliteJobStore
 from app.workers.job_worker import JobWorker, TranscriptionResult
 
@@ -28,6 +30,22 @@ class FailingProcessor:
         raise RuntimeError("detalle interno que no debe exponerse")
 
 
+class LocalFileProcessor:
+    def process(
+        self,
+        source_path: Path,
+        requested_language: str | None,
+    ) -> TranscriptionResult:
+        assert source_path.read_bytes() == b"audio local"
+        assert requested_language == "es"
+        return TranscriptionResult(
+            language="es",
+            duration_seconds=1.0,
+            text="Audio subido",
+            segments=[Segment(start=0, end=1.0, text="Audio subido")],
+        )
+
+
 def test_worker_completes_a_queued_job(tmp_path) -> None:
     store = SqliteJobStore(tmp_path / "jobs.sqlite3")
     job = store.create("https://www.youtube.com/watch?v=abc", "es")
@@ -54,6 +72,28 @@ def test_worker_marks_failures_without_internal_error_details(tmp_path) -> None:
     assert failed.id == job.id
     assert failed.status is JobStatus.FAILED
     assert failed.error_message == "No se ha podido transcribir el vídeo."
+    store.close()
+
+
+def test_worker_processes_and_removes_a_local_upload(tmp_path) -> None:
+    store = SqliteJobStore(tmp_path / "jobs.sqlite3")
+    upload = tmp_path / "upload.webm"
+    upload.write_bytes(b"audio local")
+    job = store.create(str(upload), "es", source_type=SourceType.FILE)
+    worker = JobWorker(
+        store,
+        SuccessfulProcessor(),
+        result_ttl_seconds=3600,
+        file_processor=LocalFileProcessor(),
+    )
+
+    completed = worker.process_next()
+
+    assert completed is not None
+    assert completed.id == job.id
+    assert completed.status is JobStatus.COMPLETED
+    assert completed.text == "Audio subido"
+    assert not upload.exists()
     store.close()
 
 

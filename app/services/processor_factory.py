@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.services.audio import YtDlpAudioFetcher
 from app.services.audio_processor import AudioWhisperProcessor
+from app.services.file_processor import LocalFileProcessor
 from app.services.subtitle_processor import SubtitleFirstProcessor
 from app.services.subtitles import YtDlpSubtitleFetcher
 from app.services.whisper import FasterWhisperTranscriber
@@ -26,3 +27,19 @@ def create_local_processor(
         ),
     )
     return SubtitleFirstProcessor(YtDlpSubtitleFetcher(), audio_processor)
+
+
+def create_local_file_processor(
+    model_path: Path,
+    *,
+    device: str,
+    compute_type: str,
+) -> LocalFileProcessor:
+    """Crea el procesamiento directo de ficheros con Whisper local."""
+    return LocalFileProcessor(
+        FasterWhisperTranscriber(
+            model_path,
+            device=device,
+            compute_type=compute_type,
+        )
+    )

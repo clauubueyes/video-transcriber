@@ -19,6 +19,7 @@ def client_with_settings(tmp_path) -> TestClient:
     app.dependency_overrides[get_settings] = lambda: Settings(
         token="test-token",
         allowed_domains="youtube.com,www.youtube.com,youtu.be",
+        temporary_directory=tmp_path / "uploads",
     )
     app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
     app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(60)
@@ -89,6 +90,38 @@ def test_create_transcription_schedules_the_local_worker(tmp_path) -> None:
 
     assert response.status_code == 202
     assert worker.calls == 1
+
+
+def test_create_uploaded_transcription_queues_a_local_file(tmp_path) -> None:
+    client = client_with_settings(tmp_path)
+
+    response = client.post(
+        "/v1/transcriptions/upload",
+        headers={"Authorization": "Bearer test-token"},
+        files={"file": ("receta.webm", b"audio local", "audio/webm")},
+        data={"language": "es"},
+    )
+
+    assert response.status_code == 202
+    job = client.app.state.job_store.get(response.json()["id"])
+    assert job is not None
+    assert job.source_type.value == "file"
+    assert job.language == "es"
+    assert job.source_url.endswith(".webm")
+    assert (tmp_path / "uploads").exists()
+
+
+def test_create_uploaded_transcription_rejects_unsupported_files(tmp_path) -> None:
+    client = client_with_settings(tmp_path)
+
+    response = client.post(
+        "/v1/transcriptions/upload",
+        headers={"Authorization": "Bearer test-token"},
+        files={"file": ("receta.txt", b"no es audio", "text/plain")},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "El formato de archivo no es compatible."}
 
 
 def test_create_transcription_can_leave_job_for_standalone_worker(tmp_path) -> None:

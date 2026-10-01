@@ -7,9 +7,12 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
+    File,
+    Form,
     HTTPException,
     Request,
     Response,
+    UploadFile,
     status,
 )
 
@@ -18,6 +21,7 @@ from app.core.config import Settings
 from app.core.rate_limit import TokenRateLimiter
 from app.models.transcriptions import (
     CreateTranscriptionRequest,
+    SourceType,
     TranscriptionJobResponse,
 )
 from app.services.duration import VideoDurationProbe, YtDlpVideoDurationProbe
@@ -38,6 +42,7 @@ from app.services.source_validation import (
     SourceNotAllowedError,
     validate_allowed_source,
 )
+from app.services.uploads import TemporaryUploadStore, UploadValidationError
 from app.storage.jobs import SqliteJobStore, StoredJob
 from app.workers.job_worker import JobWorker
 from app.workers.runner import BoundedJobRunner
@@ -48,6 +53,13 @@ router = APIRouter(prefix="/v1/transcriptions", tags=["transcriptions"])
 def get_job_store(request: Request) -> SqliteJobStore:
     """Obtiene el almacén asociado a la instancia FastAPI."""
     return request.app.state.job_store
+
+
+def get_upload_store(
+    settings: Settings = Depends(get_settings),
+) -> TemporaryUploadStore:
+    """Crea el almacén temporal limitado para las subidas multipart."""
+    return TemporaryUploadStore(settings.temporary_directory, settings.max_upload_bytes)
 
 
 def get_job_worker(
@@ -217,6 +229,47 @@ def create_transcription(
         )
 
     job = job_store.create(source_url, payload.language)
+    if runner is not None:
+        background_tasks.add_task(runner.run_pending)
+    return _to_response(job)
+
+
+@router.post(
+    "/upload",
+    response_model=TranscriptionJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_service_token)],
+)
+def create_uploaded_transcription(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    language: str | None = Form(default=None, pattern=r"^[a-z]{2,3}(-[A-Z]{2})?$"),
+    settings: Settings = Depends(get_settings),
+    job_store: SqliteJobStore = Depends(get_job_store),
+    upload_store: TemporaryUploadStore = Depends(get_upload_store),
+    runner: BoundedJobRunner | None = Depends(get_job_runner),
+    token_id: str = Depends(require_service_token),
+    rate_limiter: TokenRateLimiter = Depends(get_token_rate_limiter),
+) -> TranscriptionJobResponse:
+    """Guarda un audio o vídeo local y lo encola para Whisper local."""
+    if not rate_limiter.allow(token_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Has alcanzado el límite de trabajos para este periodo.",
+            headers={"Retry-After": str(settings.rate_limit_window_seconds)},
+        )
+
+    try:
+        source_path = upload_store.save(file.file, file.filename or "")
+    except UploadValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    try:
+        job = job_store.create(str(source_path), language, source_type=SourceType.FILE)
+    except Exception:
+        source_path.unlink(missing_ok=True)
+        raise
+
     if runner is not None:
         background_tasks.add_task(runner.run_pending)
     return _to_response(job)

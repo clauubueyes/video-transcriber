@@ -18,6 +18,7 @@ from app.models.transcriptions import (
     CreateTranscriptionRequest,
     TranscriptionJobResponse,
 )
+from app.services.duration import VideoDurationProbe, YtDlpVideoDurationProbe
 from app.services.processor_factory import create_local_processor
 from app.services.source_validation import (
     SourceNotAllowedError,
@@ -53,6 +54,11 @@ def get_job_worker(
         )
         request.app.state.job_worker = worker
     return worker
+
+
+def get_video_duration_probe() -> VideoDurationProbe:
+    """Obtiene la sonda local de metadatos usada antes de encolar trabajo."""
+    return YtDlpVideoDurationProbe()
 
 
 @router.get(
@@ -101,12 +107,25 @@ def create_transcription(
     settings: Settings = Depends(get_settings),
     job_store: SqliteJobStore = Depends(get_job_store),
     worker: JobWorker = Depends(get_job_worker),
+    duration_probe: VideoDurationProbe = Depends(get_video_duration_probe),
 ) -> TranscriptionJobResponse:
     """Registra un trabajo validado para su ejecución posterior."""
     try:
         validate_allowed_source(payload.source.url, settings.allowed_domain_set)
     except SourceNotAllowedError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+    duration = duration_probe.get_duration_seconds(str(payload.source.url))
+    if duration is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No hemos podido determinar la duración del vídeo.",
+        )
+    if duration > settings.max_duration_seconds:
+        raise HTTPException(
+            status_code=400,
+            detail="El vídeo supera el límite de duración para importar.",
+        )
 
     job = job_store.create(str(payload.source.url), payload.language)
     background_tasks.add_task(worker.process_next)

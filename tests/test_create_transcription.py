@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_settings
-from app.api.routes.transcriptions import get_job_worker
+from app.api.routes.transcriptions import get_job_worker, get_video_duration_probe
 from app.core.config import Settings
 from app.main import create_app
 from app.models.transcriptions import JobStatus, Segment
@@ -16,6 +16,7 @@ def client_with_settings(tmp_path) -> TestClient:
         allowed_domains="youtube.com,www.youtube.com,youtu.be",
     )
     app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
+    app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(60)
     return TestClient(app)
 
 
@@ -25,6 +26,14 @@ class RecordingWorker:
 
     def process_next(self) -> None:
         self.calls += 1
+
+
+class FixedDurationProbe:
+    def __init__(self, duration: float | None) -> None:
+        self.duration = duration
+
+    def get_duration_seconds(self, source_url: str) -> float | None:
+        return self.duration
 
 
 def test_create_transcription_queues_a_valid_youtube_job(tmp_path) -> None:
@@ -50,6 +59,7 @@ def test_create_transcription_schedules_the_local_worker(tmp_path) -> None:
     worker = RecordingWorker()
     app.dependency_overrides[get_settings] = lambda: Settings(token="test-token")
     app.dependency_overrides[get_job_worker] = lambda: worker
+    app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(60)
     client = TestClient(app)
 
     response = client.post(
@@ -90,6 +100,53 @@ def test_create_transcription_requires_bearer_token(tmp_path) -> None:
     )
 
     assert response.status_code == 401
+
+
+def test_create_transcription_rejects_videos_over_duration_limit(tmp_path) -> None:
+    app = create_app(tmp_path / "jobs.sqlite3")
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        token="test-token",
+        max_duration_seconds=60,
+    )
+    app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
+    app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(61)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/transcriptions",
+        headers={"Authorization": "Bearer test-token"},
+        json={
+            "source": {"type": "url", "url": "https://www.youtube.com/watch?v=abc"},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "El vídeo supera el límite de duración para importar."
+    }
+
+
+def test_create_transcription_rejects_videos_without_duration(tmp_path) -> None:
+    app = create_app(tmp_path / "jobs.sqlite3")
+    app.dependency_overrides[get_settings] = lambda: Settings(token="test-token")
+    app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
+    app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(
+        None
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/transcriptions",
+        headers={"Authorization": "Bearer test-token"},
+        json={
+            "source": {"type": "url", "url": "https://www.youtube.com/watch?v=abc"},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "No hemos podido determinar la duración del vídeo."
+    }
 
 
 def test_get_transcription_returns_the_queued_job(tmp_path) -> None:

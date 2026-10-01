@@ -6,6 +6,7 @@ from app.api.dependencies import get_settings
 from app.api.routes.transcriptions import (
     get_job_worker,
     get_public_host_validator,
+    get_redirect_validator,
     get_video_duration_probe,
 )
 from app.core.config import Settings
@@ -22,6 +23,7 @@ def client_with_settings(tmp_path) -> TestClient:
     app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
     app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(60)
     app.dependency_overrides[get_public_host_validator] = lambda: allow_public_host
+    app.dependency_overrides[get_redirect_validator] = lambda: identity_redirect
     return TestClient(app)
 
 
@@ -43,6 +45,10 @@ class FixedDurationProbe:
 
 def allow_public_host(host: str) -> object:
     return object()
+
+
+def identity_redirect(source_url: str) -> str:
+    return source_url
 
 
 def test_create_transcription_queues_a_valid_youtube_job(tmp_path) -> None:
@@ -70,6 +76,7 @@ def test_create_transcription_schedules_the_local_worker(tmp_path) -> None:
     app.dependency_overrides[get_job_worker] = lambda: worker
     app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(60)
     app.dependency_overrides[get_public_host_validator] = lambda: allow_public_host
+    app.dependency_overrides[get_redirect_validator] = lambda: identity_redirect
     client = TestClient(app)
 
     response = client.post(
@@ -94,6 +101,7 @@ def test_create_transcription_can_leave_job_for_standalone_worker(tmp_path) -> N
     app.dependency_overrides[get_job_worker] = lambda: worker
     app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(60)
     app.dependency_overrides[get_public_host_validator] = lambda: allow_public_host
+    app.dependency_overrides[get_redirect_validator] = lambda: identity_redirect
     client = TestClient(app)
 
     response = client.post(
@@ -146,6 +154,7 @@ def test_create_transcription_rejects_videos_over_duration_limit(tmp_path) -> No
     app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
     app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(61)
     app.dependency_overrides[get_public_host_validator] = lambda: allow_public_host
+    app.dependency_overrides[get_redirect_validator] = lambda: identity_redirect
     client = TestClient(app)
 
     response = client.post(
@@ -170,6 +179,7 @@ def test_create_transcription_rejects_videos_without_duration(tmp_path) -> None:
         None
     )
     app.dependency_overrides[get_public_host_validator] = lambda: allow_public_host
+    app.dependency_overrides[get_redirect_validator] = lambda: identity_redirect
     client = TestClient(app)
 
     response = client.post(
@@ -195,6 +205,7 @@ def test_create_transcription_limits_jobs_per_token(tmp_path) -> None:
     app.dependency_overrides[get_job_worker] = lambda: RecordingWorker()
     app.dependency_overrides[get_video_duration_probe] = lambda: FixedDurationProbe(60)
     app.dependency_overrides[get_public_host_validator] = lambda: allow_public_host
+    app.dependency_overrides[get_redirect_validator] = lambda: identity_redirect
     client = TestClient(app)
     headers = {"Authorization": "Bearer test-token"}
     payload = {

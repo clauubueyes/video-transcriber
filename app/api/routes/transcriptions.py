@@ -27,6 +27,10 @@ from app.services.network_validation import (
     validate_public_host,
 )
 from app.services.processor_factory import create_local_processor
+from app.services.redirect_validation import (
+    UnsafeRedirectError,
+    validate_redirect_chain,
+)
 from app.services.source_validation import (
     SourceNotAllowedError,
     validate_allowed_source,
@@ -87,6 +91,13 @@ def get_token_rate_limiter(
 def get_public_host_validator() -> Callable[[str], object]:
     """Expone la validación DNS como dependencia sustituible en pruebas."""
     return validate_public_host
+
+
+def get_redirect_validator(
+    host_validator: Callable[[str], object] = Depends(get_public_host_validator),
+) -> Callable[[str], str]:
+    """Compone la prevalidación de redirecciones con la validación DNS pública."""
+    return lambda source_url: validate_redirect_chain(source_url, host_validator)
 
 
 def get_job_runner(
@@ -154,6 +165,7 @@ def create_transcription(
     token_id: str = Depends(require_service_token),
     rate_limiter: TokenRateLimiter = Depends(get_token_rate_limiter),
     host_validator: Callable[[str], object] = Depends(get_public_host_validator),
+    redirect_validator: Callable[[str], str] = Depends(get_redirect_validator),
 ) -> TranscriptionJobResponse:
     """Registra un trabajo validado para su ejecución posterior."""
     try:
@@ -169,6 +181,14 @@ def create_transcription(
             detail="No se ha podido validar el origen del vídeo.",
         ) from error
 
+    try:
+        source_url = redirect_validator(str(payload.source.url))
+    except UnsafeRedirectError as error:
+        raise HTTPException(
+            status_code=400,
+            detail="No se ha podido validar el origen del vídeo.",
+        ) from error
+
     if not rate_limiter.allow(token_id):
         raise HTTPException(
             status_code=429,
@@ -176,7 +196,7 @@ def create_transcription(
             headers={"Retry-After": str(settings.rate_limit_window_seconds)},
         )
 
-    duration = duration_probe.get_duration_seconds(str(payload.source.url))
+    duration = duration_probe.get_duration_seconds(source_url)
     if duration is None:
         raise HTTPException(
             status_code=400,
@@ -188,7 +208,7 @@ def create_transcription(
             detail="El vídeo supera el límite de duración para importar.",
         )
 
-    job = job_store.create(str(payload.source.url), payload.language)
+    job = job_store.create(source_url, payload.language)
     if runner is not None:
         background_tasks.add_task(runner.run_pending)
     return _to_response(job)

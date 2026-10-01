@@ -4,9 +4,16 @@ import argparse
 from time import sleep
 
 from app.core.config import Settings
-from app.services.processor_factory import create_local_processor
+from app.services.processor_factory import (
+    create_local_file_processor,
+    create_local_processor,
+)
 from app.storage.jobs import SqliteJobStore
-from app.workers.job_worker import JobWorker, TranscriptionProcessor
+from app.workers.job_worker import (
+    FileTranscriptionProcessor,
+    JobWorker,
+    TranscriptionProcessor,
+)
 from app.workers.runner import BoundedJobRunner
 
 
@@ -14,9 +21,15 @@ def run_once(
     settings: Settings,
     store: SqliteJobStore,
     processor: TranscriptionProcessor,
+    file_processor: FileTranscriptionProcessor | None = None,
 ) -> int | None:
     """Procesa los trabajos pendientes una vez respetando la concurrencia."""
-    worker = JobWorker(store, processor, settings.result_ttl_seconds)
+    worker = JobWorker(
+        store,
+        processor,
+        settings.result_ttl_seconds,
+        file_processor=file_processor,
+    )
     runner = BoundedJobRunner(worker, settings.max_concurrent_jobs)
     return runner.run_pending()
 
@@ -25,10 +38,11 @@ def run_forever(
     settings: Settings,
     store: SqliteJobStore,
     processor: TranscriptionProcessor,
+    file_processor: FileTranscriptionProcessor | None = None,
 ) -> None:
     """Procesa cola continuamente; un supervisor externo gestiona el proceso."""
     while True:
-        processed = run_once(settings, store, processor)
+        processed = run_once(settings, store, processor, file_processor)
         if not processed:
             sleep(settings.worker_poll_interval_seconds)
 
@@ -48,11 +62,16 @@ def main() -> int:
         device=settings.whisper_device,
         compute_type=settings.whisper_compute_type,
     )
+    file_processor = create_local_file_processor(
+        settings.model_path,
+        device=settings.whisper_device,
+        compute_type=settings.whisper_compute_type,
+    )
     try:
         if arguments.once:
-            run_once(settings, store, processor)
+            run_once(settings, store, processor, file_processor)
         else:
-            run_forever(settings, store, processor)
+            run_forever(settings, store, processor, file_processor)
     finally:
         store.close()
     return 0

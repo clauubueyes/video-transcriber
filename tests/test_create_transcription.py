@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -330,3 +331,21 @@ def test_delete_transcription_removes_a_job_idempotently(tmp_path) -> None:
     assert deleted.status_code == 204
     assert repeated.status_code == 204
     assert retrieved.status_code == 404
+
+
+def test_delete_transcription_removes_a_queued_upload(tmp_path) -> None:
+    client = client_with_settings(tmp_path)
+    headers = {"Authorization": "Bearer test-token"}
+    created = client.post(
+        "/v1/transcriptions/upload",
+        headers=headers,
+        files={"file": ("receta.webm", b"audio local", "audio/webm")},
+    )
+    job = client.app.state.job_store.get(created.json()["id"])
+    assert job is not None
+    source_path = job.source_url
+
+    deleted = client.delete(f"/v1/transcriptions/{job.id}", headers=headers)
+
+    assert deleted.status_code == 204
+    assert not Path(source_path).exists()

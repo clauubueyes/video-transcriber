@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import (
     APIRouter,
@@ -165,7 +166,10 @@ def delete_transcription(
     job_store: SqliteJobStore = Depends(get_job_store),
 ) -> Response:
     """Elimina un trabajo y permite tratar su cancelación como idempotente."""
+    job = job_store.get(job_id)
     job_store.delete(job_id)
+    if job is not None and job.source_type is SourceType.FILE:
+        Path(job.source_url).unlink(missing_ok=True)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

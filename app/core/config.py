@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = Field(default=3600, ge=1)
     max_upload_bytes: int = Field(default=500_000_000, ge=1)
     temporary_directory: Path = Path("tmp")
+    orphan_upload_age_seconds: int = Field(default=3600, ge=0)
     model_path: Path = Path("models/whisper-small")
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"

@@ -2,6 +2,7 @@
 
 from io import BufferedIOBase
 from pathlib import Path
+from time import time
 from uuid import uuid4
 
 _ALLOWED_EXTENSIONS = frozenset(
@@ -43,3 +44,34 @@ class TemporaryUploadStore:
             target.unlink(missing_ok=True)
             raise
         return target
+
+    def remove_orphaned(
+        self,
+        referenced_paths: set[str],
+        older_than_seconds: int,
+    ) -> int:
+        """Borra subidas propias antiguas que ya no están en la cola SQLite."""
+        if not self._directory.exists():
+            return 0
+
+        directory = self._directory.resolve()
+        referenced = {
+            path.resolve()
+            for value in referenced_paths
+            if (path := Path(value)).resolve().is_relative_to(directory)
+        }
+        oldest_allowed_mtime = time() - older_than_seconds
+        removed = 0
+        for candidate in directory.glob("upload-*"):
+            if (
+                not candidate.is_file()
+                or candidate.resolve() in referenced
+                or candidate.stat().st_mtime > oldest_allowed_mtime
+            ):
+                continue
+            try:
+                candidate.unlink()
+            except OSError:
+                continue
+            removed += 1
+        return removed

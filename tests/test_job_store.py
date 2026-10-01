@@ -31,6 +31,15 @@ def test_store_persists_file_source_type(store: SqliteJobStore) -> None:
     assert restored.source_type is SourceType.FILE
 
 
+def test_store_lists_file_source_paths(store: SqliteJobStore) -> None:
+    store.create("tmp/upload-a.webm", "es", source_type=SourceType.FILE)
+    store.create("https://www.youtube.com/watch?v=abc", "es")
+
+    paths = store.file_source_paths()
+
+    assert paths == {"tmp/upload-a.webm"}
+
+
 def test_store_persists_valid_status_transition(store: SqliteJobStore) -> None:
     job = store.create("https://www.youtube.com/watch?v=abc", None)
 

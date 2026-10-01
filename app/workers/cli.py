@@ -8,6 +8,7 @@ from app.services.processor_factory import (
     create_local_file_processor,
     create_local_processor,
 )
+from app.services.uploads import TemporaryUploadStore
 from app.storage.jobs import SqliteJobStore
 from app.workers.job_worker import (
     FileTranscriptionProcessor,
@@ -57,6 +58,14 @@ def main() -> int:
     arguments = parser.parse_args()
     settings = Settings()
     store = SqliteJobStore(settings.database_path)
+    upload_store = TemporaryUploadStore(
+        settings.temporary_directory,
+        settings.max_upload_bytes,
+    )
+    upload_store.remove_orphaned(
+        store.file_source_paths(),
+        settings.orphan_upload_age_seconds,
+    )
     processor = create_local_processor(
         settings.model_path,
         device=settings.whisper_device,

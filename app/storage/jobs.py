@@ -166,6 +166,15 @@ class SqliteJobStore:
             )
         return cursor.rowcount == 1
 
+    def file_source_paths(self) -> set[str]:
+        """Devuelve los temporales de subida que aún pertenecen a un trabajo."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT source_url FROM transcription_jobs WHERE source_type = ?",
+                (SourceType.FILE.value,),
+            ).fetchall()
+        return {row["source_url"] for row in rows}
+
     def expire_due_results(self, now: datetime) -> int:
         """Marca resultados vencidos como expirados y elimina su contenido."""
         with self._lock, self._connection:

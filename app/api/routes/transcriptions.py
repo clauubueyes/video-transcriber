@@ -26,6 +26,7 @@ from app.services.source_validation import (
 )
 from app.storage.jobs import SqliteJobStore, StoredJob
 from app.workers.job_worker import JobWorker
+from app.workers.runner import BoundedJobRunner
 
 router = APIRouter(prefix="/v1/transcriptions", tags=["transcriptions"])
 
@@ -59,6 +60,19 @@ def get_job_worker(
 def get_video_duration_probe() -> VideoDurationProbe:
     """Obtiene la sonda local de metadatos usada antes de encolar trabajo."""
     return YtDlpVideoDurationProbe()
+
+
+def get_job_runner(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    worker: JobWorker = Depends(get_job_worker),
+) -> BoundedJobRunner:
+    """Devuelve el ejecutor local limitado para esta instancia de la API."""
+    runner = getattr(request.app.state, "job_runner", None)
+    if runner is None:
+        runner = BoundedJobRunner(worker, settings.max_concurrent_jobs)
+        request.app.state.job_runner = runner
+    return runner
 
 
 @router.get(
@@ -106,8 +120,8 @@ def create_transcription(
     background_tasks: BackgroundTasks,
     settings: Settings = Depends(get_settings),
     job_store: SqliteJobStore = Depends(get_job_store),
-    worker: JobWorker = Depends(get_job_worker),
     duration_probe: VideoDurationProbe = Depends(get_video_duration_probe),
+    runner: BoundedJobRunner = Depends(get_job_runner),
 ) -> TranscriptionJobResponse:
     """Registra un trabajo validado para su ejecución posterior."""
     try:
@@ -128,7 +142,7 @@ def create_transcription(
         )
 
     job = job_store.create(str(payload.source.url), payload.language)
-    background_tasks.add_task(worker.process_next)
+    background_tasks.add_task(runner.run_pending)
     return _to_response(job)
 
 

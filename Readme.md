@@ -5,6 +5,7 @@ API autoalojable para transcribir vídeos desde una URL o un archivo y reutiliza
 El proyecto está pensado como un servicio independiente: no conoce el dominio ni la interfaz de sus clientes. Cada consumidor puede usar la transcripción para crear subtítulos, resúmenes, buscadores, notas, análisis de contenido o cualquier otro flujo propio.
 
 El plan detallado de construcción está en [docs/plan-implementacion.md](docs/plan-implementacion.md).
+La guía para ejecutar y probar el servicio está en [docs/uso-local.md](docs/uso-local.md).
 
 ## Objetivo
 
@@ -153,4 +154,7 @@ El software no requerirá una API de pago. Sí necesita una máquina que esté e
 
 ## Estado
 
-En fase de diseño. Aún no hay servidor ni endpoints implementados.
+Implementación local en progreso. La API, trabajos SQLite, subtítulos VTT,
+procesamiento local con `faster-whisper`, límites de duración y concurrencia,
+caducidad y pruebas ya están disponibles. Docker Compose y el worker separado
+para despliegues de producción siguen pendientes.

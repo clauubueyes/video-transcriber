@@ -155,7 +155,7 @@ El software no requerirá una API de pago. Sí necesita una máquina que esté e
 
 ## Estado
 
-Implementación local en progreso. La API, trabajos SQLite, subtítulos VTT,
-procesamiento local con `faster-whisper`, límites de duración y concurrencia,
-caducidad, Docker Compose y pruebas ya están disponibles. El worker separado
-para despliegues de producción sigue pendiente.
+Implementación local en progreso. La API acepta URLs de YouTube y subidas
+explícitas de archivos, usa trabajos SQLite, subtítulos VTT o
+`faster-whisper` local, y aplica límites de duración, tamaño y concurrencia.
+La caducidad, Docker Compose, worker separado y pruebas ya están disponibles.

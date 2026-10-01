@@ -97,6 +97,30 @@ Invoke-RestMethod -Method Delete `
   -Headers $headers
 ```
 
+## Subir un archivo local
+
+La alternativa a una URL es subir explícitamente un archivo de audio o vídeo.
+La API acepta `aac`, `flac`, `m4a`, `mp3`, `mp4`, `ogg`, `opus`, `wav` y `webm`.
+El límite se configura mediante `VIDEO_TRANSCRIBER_MAX_UPLOAD_BYTES` (500 MB
+por defecto). El archivo se guarda solo de forma temporal, se procesa con
+Whisper local y se borra al acabar o al cancelar el trabajo.
+
+```powershell
+$headers = @{ Authorization = "Bearer un-secreto-local-largo" }
+
+$job = Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/v1/transcriptions/upload" `
+  -Headers $headers `
+  -Form @{ file = Get-Item "C:\ruta\a\audio-o-video.webm"; language = "es" }
+
+$job
+```
+
+Consulta y, si es necesario, cancela el trabajo con las mismas rutas `GET` y
+`DELETE` mostradas en el apartado anterior. En PowerShell 5.1, que no dispone
+de `-Form`, usa `curl.exe -F "file=@C:\ruta\a\archivo.webm" -F "language=es"`
+y la cabecera `Authorization: Bearer ...`.
+
 ## Procesamiento
 
 1. El servicio consulta la duración sin descargar contenido y rechaza vídeos
@@ -107,6 +131,10 @@ Invoke-RestMethod -Method Delete `
    con el modelo local de `faster-whisper`.
 4. Los resultados se guardan temporalmente en SQLite. Al vencer su TTL pasan a
    `expired` y se elimina texto, segmentos y duración.
+
+Para archivos subidos, no se usa `yt-dlp`: Whisper recibe el fichero temporal
+directamente. Ningún paso de este flujo llama a OpenAI, Gemini ni otro proveedor
+de IA remoto.
 
 El valor `VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS` limita procesamientos locales
 simultáneos para no saturar CPU o GPU.
@@ -136,6 +164,9 @@ debe encargarse de reiniciarlo si se detiene:
 ```powershell
 .\.venv\Scripts\python.exe -m app.workers.cli
 ```
+
+La API y el worker deben usar el mismo `VIDEO_TRANSCRIBER_TEMPORARY_DIRECTORY`;
+es imprescindible para que el worker pueda leer una subida que recibió la API.
 
 ## Logs y privacidad
 

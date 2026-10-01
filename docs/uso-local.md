@@ -98,6 +98,23 @@ Invoke-RestMethod -Method Delete `
 El valor `VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS` limita procesamientos locales
 simultáneos para no saturar CPU o GPU.
 
+## Worker separado
+
+La API procesa la cola localmente por defecto. Para usar un proceso independiente
+con la misma base SQLite, detén la API o evita crear trabajos mientras verificas
+la configuración y ejecuta una pasada:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.workers.cli --once
+```
+
+Para un worker permanente, ejecútalo sin `--once`; un supervisor de procesos
+debe encargarse de reiniciarlo si se detiene:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.workers.cli
+```
+
 ## Logs y privacidad
 
 Los logs son JSON y solo contienen evento, ID de trabajo, estado y duración.

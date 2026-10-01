@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     max_duration_seconds: int = Field(default=1800, ge=1)
     result_ttl_seconds: int = Field(default=86400, ge=1)
     max_concurrent_jobs: int = Field(default=1, ge=1)
+    database_path: Path = Path("data/transcriber.sqlite3")
+    worker_poll_interval_seconds: float = Field(default=2, gt=0)
     model_path: Path = Path("models/whisper-small")
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"

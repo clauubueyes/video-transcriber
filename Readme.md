@@ -158,4 +158,5 @@ El software no requerirá una API de pago. Sí necesita una máquina que esté e
 Implementación local en progreso. La API acepta URLs de YouTube y subidas
 explícitas de archivos, usa trabajos SQLite, subtítulos VTT o
 `faster-whisper` local, y aplica límites de duración, tamaño y concurrencia.
-La caducidad, Docker Compose, worker separado y pruebas ya están disponibles.
+La caducidad, limpieza de temporales huérfanos, Docker Compose, worker separado
+y pruebas ya están disponibles.

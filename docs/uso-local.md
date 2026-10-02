@@ -29,6 +29,7 @@ VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS=1800
 VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS=1
 VIDEO_TRANSCRIBER_MAX_JOBS_PER_TOKEN=10
 VIDEO_TRANSCRIBER_RATE_LIMIT_WINDOW_SECONDS=3600
+VIDEO_TRANSCRIBER_ORPHAN_UPLOAD_AGE_SECONDS=3600
 VIDEO_TRANSCRIBER_MODEL_PATH=models/whisper-small
 ```
 
@@ -167,6 +168,14 @@ debe encargarse de reiniciarlo si se detiene:
 
 La API y el worker deben usar el mismo `VIDEO_TRANSCRIBER_TEMPORARY_DIRECTORY`;
 es imprescindible para que el worker pueda leer una subida que recibió la API.
+
+Al arrancar, el worker también limpia archivos temporales `upload-*` que ya no
+estén referenciados por ningún trabajo SQLite y que tengan al menos la antigüedad
+indicada por `VIDEO_TRANSCRIBER_ORPHAN_UPLOAD_AGE_SECONDS` (una hora por
+defecto). Este margen evita interferir con subidas en curso; los archivos de
+trabajos pendientes no se borran. Si el servicio se interrumpió durante una
+subida, reinicia el worker para que pueda recuperar ese espacio cuando venza el
+periodo configurado.
 
 ## Logs y privacidad
 

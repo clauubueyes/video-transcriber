@@ -30,6 +30,7 @@ VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS=1
 VIDEO_TRANSCRIBER_MAX_JOBS_PER_TOKEN=10
 VIDEO_TRANSCRIBER_RATE_LIMIT_WINDOW_SECONDS=3600
 VIDEO_TRANSCRIBER_ORPHAN_UPLOAD_AGE_SECONDS=3600
+VIDEO_TRANSCRIBER_STALE_JOB_TIMEOUT_SECONDS=7200
 VIDEO_TRANSCRIBER_MODEL_PATH=models/whisper-small
 ```
 
@@ -176,6 +177,15 @@ defecto). Este margen evita interferir con subidas en curso; los archivos de
 trabajos pendientes no se borran. Si el servicio se interrumpió durante una
 subida, reinicia el worker para que pueda recuperar ese espacio cuando venza el
 periodo configurado.
+
+Si el proceso se interrumpe mientras descarga o transcribe, el worker vuelve a
+encolar esos trabajos cuando llevan más de
+`VIDEO_TRANSCRIBER_STALE_JOB_TIMEOUT_SECONDS` sin actualizarse (dos horas por
+defecto). Ajusta ese valor por encima del tiempo máximo real de procesamiento
+de tus vídeos para evitar repetir un trabajo todavía activo.
+
+En cada pasada, el worker también caduca los resultados cuyo TTL haya vencido,
+sin esperar a que un cliente vuelva a consultar el trabajo.
 
 ## Logs y privacidad
 

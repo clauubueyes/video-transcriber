@@ -237,6 +237,30 @@ class SqliteJobStore:
             )
         return cursor.rowcount
 
+    def requeue_stale_active_jobs(self, before: datetime) -> int:
+        """Devuelve a la cola trabajos activos interrumpidos hace tiempo.
+
+        Un proceso puede terminar mientras descarga o transcribe. Al no haber
+        confirmación final, esos trabajos se pueden intentar de nuevo sin
+        perder la referencia al archivo temporal de una subida.
+        """
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                """
+                UPDATE transcription_jobs
+                SET status = ?, error_message = NULL, updated_at = ?
+                WHERE status IN (?, ?) AND updated_at <= ?
+                """,
+                (
+                    JobStatus.QUEUED.value,
+                    datetime.now(UTC).isoformat(),
+                    JobStatus.DOWNLOADING.value,
+                    JobStatus.TRANSCRIBING.value,
+                    before.isoformat(),
+                ),
+            )
+        return cursor.rowcount
+
     def complete(
         self,
         job_id: str,

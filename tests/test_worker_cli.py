@@ -1,7 +1,8 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.core.config import Settings
-from app.models.transcriptions import Segment, SourceType
+from app.models.transcriptions import JobStatus, Segment, SourceType
 from app.storage.jobs import SqliteJobStore
 from app.workers.cli import run_once
 from app.workers.job_worker import TranscriptionResult
@@ -70,4 +71,29 @@ def test_standalone_worker_processes_pending_local_upload(tmp_path) -> None:
     assert completed is not None
     assert completed.text == "Archivo local"
     assert not upload.exists()
+    store.close()
+
+
+def test_standalone_worker_expires_results_before_processing(tmp_path) -> None:
+    store = SqliteJobStore(tmp_path / "jobs.sqlite3")
+    job = store.create("https://www.youtube.com/watch?v=abc", "es")
+    store.update_status(job.id, JobStatus.DOWNLOADING)
+    store.update_status(job.id, JobStatus.TRANSCRIBING)
+    store.complete(
+        job.id,
+        language="es",
+        duration_seconds=1,
+        text="Caducada",
+        segments=[Segment(start=0, end=1, text="Caducada")],
+        expires_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    settings = Settings(token="test-token", result_ttl_seconds=60)
+
+    processed = run_once(settings, store, SuccessfulProcessor())
+    expired = store.get(job.id)
+
+    assert processed == 0
+    assert expired is not None
+    assert expired.status is JobStatus.EXPIRED
+    assert expired.text is None
     store.close()

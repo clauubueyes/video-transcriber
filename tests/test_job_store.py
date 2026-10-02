@@ -147,6 +147,23 @@ def test_store_expires_and_clears_due_transcription_results(
     assert expired.expires_at is None
 
 
+def test_store_requeues_stale_active_jobs(store: SqliteJobStore) -> None:
+    downloading = store.create("https://www.youtube.com/watch?v=downloading", None)
+    transcribing = store.create("https://www.youtube.com/watch?v=transcribing", None)
+    recent = store.create("https://www.youtube.com/watch?v=recent", None)
+    store.update_status(downloading.id, JobStatus.DOWNLOADING)
+    store.update_status(transcribing.id, JobStatus.DOWNLOADING)
+    store.update_status(transcribing.id, JobStatus.TRANSCRIBING)
+    store.update_status(recent.id, JobStatus.DOWNLOADING)
+
+    requeued = store.requeue_stale_active_jobs(datetime.now(UTC) + timedelta(seconds=1))
+
+    assert requeued == 3
+    assert store.get(downloading.id).status is JobStatus.QUEUED  # type: ignore[union-attr]
+    assert store.get(transcribing.id).status is JobStatus.QUEUED  # type: ignore[union-attr]
+    assert store.get(recent.id).status is JobStatus.QUEUED  # type: ignore[union-attr]
+
+
 def test_store_deletes_job(store: SqliteJobStore) -> None:
     job = store.create("https://www.youtube.com/watch?v=abc", None)
 

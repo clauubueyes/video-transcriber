@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     max_concurrent_jobs: int = Field(default=1, ge=1)
     database_path: Path = Path("data/transcriber.sqlite3")
     worker_poll_interval_seconds: float = Field(default=2, gt=0)
+    stale_job_timeout_seconds: int = Field(default=7200, ge=1)
     process_jobs_in_api: bool = True
     max_jobs_per_token: int = Field(default=10, ge=1)
     rate_limit_window_seconds: int = Field(default=3600, ge=1)

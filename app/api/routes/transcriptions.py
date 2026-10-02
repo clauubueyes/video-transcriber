@@ -1,7 +1,7 @@
 """Rutas HTTP para crear trabajos de transcripción."""
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import (
@@ -126,12 +126,17 @@ def get_job_runner(
     request: Request,
     settings: Settings = Depends(get_settings),
     worker: JobWorker = Depends(get_job_worker),
+    job_store: SqliteJobStore = Depends(get_job_store),
 ) -> BoundedJobRunner | None:
     """Devuelve el ejecutor local limitado para esta instancia de la API."""
     if not settings.process_jobs_in_api:
         return None
     runner = getattr(request.app.state, "job_runner", None)
     if runner is None:
+        job_store.requeue_stale_active_jobs(
+            datetime.now(UTC)
+            - timedelta(seconds=settings.stale_job_timeout_seconds)
+        )
         runner = BoundedJobRunner(worker, settings.max_concurrent_jobs)
         request.app.state.job_runner = runner
     return runner

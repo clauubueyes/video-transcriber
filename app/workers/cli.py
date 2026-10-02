@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+from datetime import UTC, datetime, timedelta
 from time import sleep
 
 from app.core.config import Settings
@@ -29,6 +30,16 @@ def run_once(
     file_processor: FileTranscriptionProcessor | None = None,
 ) -> int | None:
     """Procesa los trabajos pendientes una vez respetando la concurrencia."""
+    expired_results = store.expire_due_results(datetime.now(UTC))
+    if expired_results:
+        logger.info(
+            "expired_results_removed", extra={"expired_results": expired_results}
+        )
+    requeued_jobs = store.requeue_stale_active_jobs(
+        datetime.now(UTC) - timedelta(seconds=settings.stale_job_timeout_seconds)
+    )
+    if requeued_jobs:
+        logger.warning("stale_jobs_requeued", extra={"requeued_jobs": requeued_jobs})
     worker = JobWorker(
         store,
         processor,

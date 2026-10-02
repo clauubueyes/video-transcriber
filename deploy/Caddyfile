@@ -1,0 +1,3 @@
+{$TRANSCRIBER_DOMAIN} {
+    reverse_proxy video-transcriber:8000
+}

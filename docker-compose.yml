@@ -19,6 +19,8 @@ services:
     build: .
     profiles: ["worker"]
     command: ["python", "-m", "app.workers.cli"]
+    healthcheck:
+      disable: true
     env_file: .env
     volumes:
       - ./data:/app/data

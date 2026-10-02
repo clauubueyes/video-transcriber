@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     worker_poll_interval_seconds: float = Field(default=2, gt=0)
     stale_job_timeout_seconds: int = Field(default=7200, ge=1)
     process_jobs_in_api: bool = True
+    public_web_enabled: bool = True
+    public_jobs_per_hour: int = Field(default=30, ge=1)
     max_jobs_per_token: int = Field(default=10, ge=1)
     rate_limit_window_seconds: int = Field(default=3600, ge=1)
     max_upload_bytes: int = Field(default=500_000_000, ge=1)

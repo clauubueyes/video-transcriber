@@ -1,5 +1,37 @@
 # Despliegue operativo
 
+## Web pública con HTTPS
+
+La página está incluida en la API en `/`. Los visitantes pegan el enlace y
+reciben el texto sin configurar nada ni conocer el token privado.
+
+Para publicarla, necesitas un servidor con Docker y un dominio cuyo DNS apunte
+a ese servidor. Añade a `.env`:
+
+```env
+TRANSCRIBER_DOMAIN=transcriber.tudominio.com
+VIDEO_TRANSCRIBER_PUBLIC_WEB_ENABLED=true
+VIDEO_TRANSCRIBER_PUBLIC_JOBS_PER_HOUR=30
+```
+
+Coloca un modelo CTranslate2 de Whisper en `models/whisper-small`. Sin modelo,
+los vídeos con subtítulos pueden funcionar, pero los que necesitan transcripción
+de audio fallarán. El servicio no descarga el modelo automáticamente.
+
+Ejecuta en el servidor:
+
+```powershell
+docker compose -f compose.web.yml up -d --build
+```
+
+Abre `https://transcriber.tudominio.com`. Caddy gestiona los certificados HTTPS;
+los puertos 80 y 443 deben ser accesibles para emitirlos. La API solo es accesible
+a través del proxy y el worker se ejecuta como proceso independiente.
+
+Las cuotas se guardan en memoria y son por proceso: este despliegue utiliza una
+sola API. Reiniciarla reinicia las cuotas. Para escalar a varias réplicas se
+necesitan límites y cola compartidos.
+
 ## Antes de exponer el servicio
 
 1. Crea un token aleatorio y guárdalo solo en el gestor de secretos o en el

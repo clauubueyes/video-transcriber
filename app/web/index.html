@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Transcriber · Del vídeo al texto</title>
+  <style>
+    :root{--bg:#f4f6fb;--ink:#17233c;--muted:#526079;--brand:#4438ca;--line:#dbe1ed}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}
+    header{max-width:1100px;margin:auto;padding:28px 24px;display:flex;align-items:center;gap:12px;font-weight:750}
+    .logo{display:grid;place-items:center;background:var(--brand);color:white;width:38px;height:38px;border-radius:12px}
+    main{max-width:860px;margin:48px auto;padding:0 24px} .eyebrow{color:var(--brand);font-size:13px;font-weight:750;letter-spacing:.14em;text-transform:uppercase}
+    h1{font-size:clamp(34px,6vw,58px);letter-spacing:-.045em;line-height:1.1;margin:18px 0} .intro{font-size:18px;line-height:1.6;color:var(--muted);max-width:600px}
+    .card{background:white;border:1px solid var(--line);border-radius:22px;padding:28px;margin-top:32px;box-shadow:0 12px 40px #17233c08}
+    label{display:block;font-size:14px;font-weight:650;margin-bottom:10px} .entry{display:flex;gap:12px}
+    input,select{font:inherit;background:white;border:1px solid #bbc5d7;border-radius:11px;padding:14px;color:var(--ink)}input{width:100%;min-width:0}
+    button{font:inherit;font-weight:650;cursor:pointer;border:0;border-radius:11px;padding:14px 20px;background:var(--brand);color:white;white-space:nowrap}
+    button:hover{background:#3328a9}button:disabled{opacity:.6;cursor:wait}:focus-visible{outline:3px solid #938bff;outline-offset:3px}
+    .options{margin-top:20px;display:flex;align-items:center;gap:14px}.options label{margin:0}.note{font-size:13px;line-height:1.6;color:var(--muted)}
+    #status{margin-top:22px;line-height:1.6}#status[data-error="true"]{color:#a32431}#result{margin-top:24px}.result-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    h2{font-size:21px;margin:0}.actions{display:flex;gap:8px}.actions button{background:#eceafb;color:var(--brand);font-size:14px;padding:10px 14px}
+    #text{white-space:pre-wrap;line-height:1.8;overflow-wrap:anywhere;border-top:1px solid var(--line);padding-top:22px;margin-top:22px;max-height:600px;overflow:auto}
+    footer{max-width:860px;margin:40px auto;padding:0 24px;color:var(--muted);font-size:13px;line-height:1.7}[hidden]{display:none!important}
+    @media(max-width:600px){main{margin-top:24px}.card{padding:20px}.entry{flex-direction:column}.entry button{width:100%}.options{flex-wrap:wrap}}
+  </style>
+</head>
+<body>
+  <header><span class="logo" aria-hidden="true">▶</span> Video Transcriber</header>
+  <main>
+    <div class="eyebrow">Menos reproducción, más lectura</div>
+    <h1>Tu vídeo, en palabras.</h1>
+    <p class="intro">Pega un enlace de YouTube y consigue su transcripción. Léela, cópiala o descárgala cuando esté lista.</p>
+    <section class="card" aria-label="Crear transcripción">
+      <form id="form">
+        <label for="url">Enlace del vídeo</label>
+        <div class="entry"><input id="url" name="url" type="url" required placeholder="https://www.youtube.com/watch?v=…" autocomplete="off"><button id="submit" type="submit">Transcribir vídeo →</button></div>
+        <div class="options"><label for="language">Idioma del vídeo</label><select id="language"><option value="">Detectar automáticamente</option><option value="es">Español</option><option value="en">Inglés</option><option value="fr">Francés</option><option value="pt">Portugués</option><option value="de">Alemán</option></select></div>
+        <p class="note">Usa vídeos públicos a los que tengas permiso para acceder. El procesamiento puede tardar unos minutos.</p>
+      </form>
+      <div id="status" role="status" aria-live="polite"></div>
+      <button id="retry" type="button" hidden>Reintentar consulta</button>
+      <section id="result" hidden aria-label="Resultado">
+        <div class="result-head"><h2>Tu transcripción</h2><div class="actions"><button id="copy" type="button">Copiar texto</button><button id="download" type="button">Descargar .txt</button></div></div>
+        <div id="text"></div>
+      </section>
+    </section>
+  </main>
+  <footer>El resultado es temporal. Descárgalo si quieres conservarlo.<br>La transcripción automática puede contener errores.</footer>
+  <script>
+    const $ = id => document.getElementById(id);
+    let current = null, timer = null, transcript = '';
+    const messages = {queued:'En cola. Tu vídeo se procesará en cuanto haya un hueco.',downloading:'Preparando el vídeo…',transcribing:'Transcribiendo el vídeo. Puedes dejar esta página abierta.'};
+    function status(message,error=false){$('status').textContent=message;$('status').dataset.error=String(error);}
+    function busy(value){$('submit').disabled=value;$('url').disabled=value;$('language').disabled=value;}
+    async function api(url,options={}){
+      if(!['http:','https:'].includes(location.protocol)){
+        throw new Error('Abre esta página desde http://127.0.0.1:8000/ con el servidor en marcha.');
+      }
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),options.method==='POST'?120000:30000);
+      try{
+        let response;
+        try{response=await fetch(url,{...options,signal:controller.signal,cache:'no-store'});}
+        catch(error){
+          if(error.name==='AbortError')throw new Error('El servidor está tardando demasiado en responder. Espera un momento antes de volver a intentarlo.');
+          throw new Error('No se puede conectar con el servidor. Comprueba que siga en marcha y abre la página desde su dirección, por ejemplo http://127.0.0.1:8000/.');
+        }
+        let data;
+        try{data=await response.json();}
+        catch{throw new Error(response.ok?'El servidor ha enviado una respuesta inesperada. Recarga la página.':'El servidor no pudo procesar la solicitud. Inténtalo de nuevo en unos minutos.');}
+        if(!response.ok)throw new Error(typeof data.detail==='string'?data.detail:'Revisa el enlace e inténtalo de nuevo.');
+        return data;
+      }finally{clearTimeout(timeout);}
+    }
+    function remember(){try{sessionStorage.setItem('transcriber-job',JSON.stringify(current));}catch{}}
+    async function poll(){
+      $('retry').hidden=true;
+      try{
+        const job=await api('/web/jobs/'+encodeURIComponent(current.id),{headers:{'X-Job-Key':current.key}});
+        if(messages[job.status]){busy(true);status(messages[job.status]);timer=setTimeout(poll,3000);return;}
+        busy(false);
+        if(job.status==='completed'){
+          transcript=job.text||'';$('text').textContent=transcript;$('result').hidden=false;
+          status('Lista. Ya puedes copiar o descargar tu transcripción.');
+        }else if(job.status==='expired'){status('Esta transcripción ha caducado. Puedes volver a enviar el enlace.',true);}
+        else{status('No se ha podido transcribir este vídeo. Prueba otro enlace o inténtalo más tarde.',true);}
+      }catch(error){busy(false);status('No pudimos consultar el resultado. '+error.message,true);$('retry').hidden=false;}
+    }
+    $('form').addEventListener('submit',async event=>{
+      event.preventDefault();clearTimeout(timer);busy(true);$('result').hidden=true;$('retry').hidden=true;
+      status('Comprobando el vídeo…');
+      try{
+        const data=await api('/web/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:{type:'url',url:$('url').value.trim()},language:$('language').value||null})});
+        current={id:data.job.id,key:data.accessKey,url:$('url').value};remember();await poll();
+      }catch(error){busy(false);status(error.message,true);}
+    });
+    $('retry').addEventListener('click',poll);
+    $('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(transcript);status('Texto copiado.');}catch{status('Selecciona el texto y cópialo con Ctrl+C.',true);}});
+    $('download').addEventListener('click',()=>{const link=document.createElement('a');const url=URL.createObjectURL(new Blob([transcript],{type:'text/plain;charset=utf-8'}));link.href=url;link.download='transcripcion.txt';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+    try{current=JSON.parse(sessionStorage.getItem('transcriber-job'));if(current&&current.id&&current.key){$('url').value=current.url||'';poll();}}catch{current=null;}
+    if(!['http:','https:'].includes(location.protocol)){
+      busy(true);status('Para transcribir, abre http://127.0.0.1:8000/ con el servidor en marcha.',true);
+    }
+  </script>
+</body>
+</html>

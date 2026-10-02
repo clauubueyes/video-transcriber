@@ -2,6 +2,9 @@
 
 API autoalojable para transcribir vídeos desde una URL o un archivo y reutilizar el resultado desde cualquier aplicación.
 
+Incluye una interfaz web en `/`: pega un enlace de YouTube, espera al resultado
+y copia o descarga la transcripción sin introducir claves de API.
+
 El proyecto está pensado como un servicio independiente: no conoce el dominio ni la interfaz de sus clientes. Cada consumidor puede usar la transcripción para crear subtítulos, resúmenes, buscadores, notas, análisis de contenido o cualquier otro flujo propio.
 
 El plan detallado de construcción está en [docs/plan-implementacion.md](docs/plan-implementacion.md).

@@ -40,6 +40,19 @@ Inicia la API:
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
+Abre `http://127.0.0.1:8000/` para usar la interfaz web: pega un enlace de
+YouTube, pulsa **Transcribir vídeo** y espera al resultado. Puedes copiarlo o
+descargarlo como `.txt`. No se pide el token a los visitantes.
+
+La página conserva la referencia al último trabajo en la pestaña para poder
+recuperarlo al recargar. Cada resultado requiere su propia clave de acceso.
+La API privada `/v1/transcriptions` sigue requiriendo el token de servicio.
+
+La interfaz admite 30 solicitudes públicas por hora en total, ajustables con
+`VIDEO_TRANSCRIBER_PUBLIC_JOBS_PER_HOUR`, y aplica la cuota individual por IP
+configurada con `VIDEO_TRANSCRIBER_MAX_JOBS_PER_TOKEN`. Para desactivar las
+rutas públicas, usa `VIDEO_TRANSCRIBER_PUBLIC_WEB_ENABLED=false`.
+
 Comprueba el estado en `http://127.0.0.1:8000/health` y explora la API en
 `http://127.0.0.1:8000/docs`.
 

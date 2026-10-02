@@ -1,0 +1,45 @@
+# Despliegue independiente: docker compose -f compose.web.yml up -d --build
+services:
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      TRANSCRIBER_DOMAIN: ${TRANSCRIBER_DOMAIN:?Define el dominio en .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      video-transcriber:
+        condition: service_healthy
+
+  video-transcriber:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API: "false"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models:ro
+      - ./tmp:/app/tmp
+
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    command: ["python", "-m", "app.workers.cli"]
+    healthcheck:
+      disable: true
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models:ro
+      - ./tmp:/app/tmp
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -40,6 +40,33 @@ def test_store_lists_file_source_paths(store: SqliteJobStore) -> None:
     assert paths == {"tmp/upload-a.webm"}
 
 
+def test_store_reports_operational_metrics(store: SqliteJobStore) -> None:
+    store.create("https://www.youtube.com/watch?v=queued", "es")
+    active = store.create("https://www.youtube.com/watch?v=active", "es")
+    failed = store.create("https://www.youtube.com/watch?v=failed", "es")
+    completed = store.create("https://www.youtube.com/watch?v=completed", "es")
+    store.update_status(active.id, JobStatus.DOWNLOADING)
+    store.update_status(failed.id, JobStatus.FAILED)
+    store.update_status(completed.id, JobStatus.DOWNLOADING)
+    store.update_status(completed.id, JobStatus.TRANSCRIBING)
+    store.complete(
+        completed.id,
+        language="es",
+        duration_seconds=12.5,
+        text="Completada",
+        segments=[Segment(start=0, end=12.5, text="Completada")],
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+
+    metrics = store.metrics()
+
+    assert metrics.queued_jobs == 1
+    assert metrics.active_jobs == 1
+    assert metrics.completed_jobs == 1
+    assert metrics.failed_jobs == 1
+    assert metrics.average_completed_duration_seconds == 12.5
+
+
 def test_store_persists_valid_status_transition(store: SqliteJobStore) -> None:
     job = store.create("https://www.youtube.com/watch?v=abc", None)
 

@@ -65,3 +65,19 @@ class TranscriptionJobResponse(BaseModel):
     text: str | None = None
     segments: list[Segment] | None = None
     expires_at: datetime | None = Field(default=None, serialization_alias="expiresAt")
+
+
+class TranscriptionMetricsResponse(BaseModel):
+    """Agregados operativos sin datos de fuentes ni transcripciones."""
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+    queued_jobs: int = Field(ge=0, serialization_alias="queuedJobs")
+    active_jobs: int = Field(ge=0, serialization_alias="activeJobs")
+    completed_jobs: int = Field(ge=0, serialization_alias="completedJobs")
+    failed_jobs: int = Field(ge=0, serialization_alias="failedJobs")
+    average_completed_duration_seconds: float | None = Field(
+        default=None,
+        ge=0,
+        serialization_alias="averageCompletedDurationSeconds",
+    )

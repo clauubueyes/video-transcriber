@@ -31,6 +31,17 @@ class StoredJob:
     expires_at: datetime | None
 
 
+@dataclass(frozen=True)
+class JobMetrics:
+    """Agregados de estado para observación local de la cola."""
+
+    queued_jobs: int
+    active_jobs: int
+    completed_jobs: int
+    failed_jobs: int
+    average_completed_duration_seconds: float | None
+
+
 _ALLOWED_TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
     JobStatus.QUEUED: frozenset(
         {JobStatus.DOWNLOADING, JobStatus.FAILED, JobStatus.EXPIRED}
@@ -174,6 +185,37 @@ class SqliteJobStore:
                 (SourceType.FILE.value,),
             ).fetchall()
         return {row["source_url"] for row in rows}
+
+    def metrics(self) -> JobMetrics:
+        """Obtiene conteos de cola y duración media sin leer transcripciones."""
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT
+                    SUM(status = ?) AS queued_jobs,
+                    SUM(status IN (?, ?)) AS active_jobs,
+                    SUM(status = ?) AS completed_jobs,
+                    SUM(status = ?) AS failed_jobs,
+                    AVG(CASE WHEN status = ? THEN duration_seconds END)
+                        AS average_duration
+                FROM transcription_jobs
+                """,
+                (
+                    JobStatus.QUEUED.value,
+                    JobStatus.DOWNLOADING.value,
+                    JobStatus.TRANSCRIBING.value,
+                    JobStatus.COMPLETED.value,
+                    JobStatus.FAILED.value,
+                    JobStatus.COMPLETED.value,
+                ),
+            ).fetchone()
+        return JobMetrics(
+            queued_jobs=row["queued_jobs"] or 0,
+            active_jobs=row["active_jobs"] or 0,
+            completed_jobs=row["completed_jobs"] or 0,
+            failed_jobs=row["failed_jobs"] or 0,
+            average_completed_duration_seconds=row["average_duration"],
+        )
 
     def expire_due_results(self, now: datetime) -> int:
         """Marca resultados vencidos como expirados y elimina su contenido."""

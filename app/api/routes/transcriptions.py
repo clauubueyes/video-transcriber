@@ -24,6 +24,7 @@ from app.models.transcriptions import (
     CreateTranscriptionRequest,
     SourceType,
     TranscriptionJobResponse,
+    TranscriptionMetricsResponse,
 )
 from app.services.duration import VideoDurationProbe, YtDlpVideoDurationProbe
 from app.services.network_validation import (
@@ -134,6 +135,18 @@ def get_job_runner(
         runner = BoundedJobRunner(worker, settings.max_concurrent_jobs)
         request.app.state.job_runner = runner
     return runner
+
+
+@router.get(
+    "/metrics",
+    response_model=TranscriptionMetricsResponse,
+    dependencies=[Depends(require_service_token)],
+)
+def get_transcription_metrics(
+    job_store: SqliteJobStore = Depends(get_job_store),
+) -> TranscriptionMetricsResponse:
+    """Expone agregados operativos sin contenido de trabajos."""
+    return TranscriptionMetricsResponse.model_validate(job_store.metrics())
 
 
 @router.get(

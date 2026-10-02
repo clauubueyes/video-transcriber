@@ -274,6 +274,23 @@ def test_get_transcription_returns_the_queued_job(tmp_path) -> None:
     assert response.json()["status"] == "queued"
 
 
+def test_get_transcription_metrics_returns_only_aggregates(tmp_path) -> None:
+    client = client_with_settings(tmp_path)
+    headers = {"Authorization": "Bearer test-token"}
+    client.app.state.job_store.create("https://www.youtube.com/watch?v=queued", "es")
+
+    response = client.get("/v1/transcriptions/metrics", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "queuedJobs": 1,
+        "activeJobs": 0,
+        "completedJobs": 0,
+        "failedJobs": 0,
+        "averageCompletedDurationSeconds": None,
+    }
+
+
 def test_get_transcription_returns_not_found_for_unknown_job(tmp_path) -> None:
     client = client_with_settings(tmp_path)
 

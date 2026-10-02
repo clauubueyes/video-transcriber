@@ -1,166 +1,177 @@
 # Video Transcriber
 
-API autoalojable para transcribir vídeos desde una URL o un archivo y reutilizar el resultado desde cualquier aplicación.
+Servicio local para obtener transcripciones de vídeos de YouTube o de archivos
+de audio y vídeo. Primero intenta aprovechar los subtítulos disponibles; si no
+los hay, usa un modelo local compatible con `faster-whisper`.
 
-Incluye una interfaz web en `/`: pega un enlace de YouTube, espera al resultado
-y copia o descarga la transcripción sin introducir claves de API.
+Incluye una interfaz web en `http://127.0.0.1:8000/`, una API FastAPI, trabajos
+asíncronos guardados en SQLite y un worker opcional. No utiliza APIs de IA
+remotas ni descarga modelos de Whisper automáticamente.
 
-El proyecto está pensado como un servicio independiente: no conoce el dominio ni la interfaz de sus clientes. Cada consumidor puede usar la transcripción para crear subtítulos, resúmenes, buscadores, notas, análisis de contenido o cualquier otro flujo propio.
+## Requisitos
 
-El plan detallado de construcción está en [docs/plan-implementacion.md](docs/plan-implementacion.md).
-La guía para ejecutar y probar el servicio está en [docs/uso-local.md](docs/uso-local.md).
-Para preparar un servidor, consulta [docs/despliegue.md](docs/despliegue.md).
+- Python 3.11 o posterior.
+- `ffmpeg` disponible en el `PATH` para procesar audio y vídeo con Whisper.
+- Un modelo CTranslate2 compatible con `faster-whisper` si se van a transcribir
+  vídeos sin subtítulos o archivos subidos.
+- Docker Desktop es opcional; puede usarse en lugar de Python local.
 
-## Objetivo
+## Puesta en marcha local
 
-- Transcribir audio y vídeo de forma local, sin una API de transcripción de pago.
-- Exponer una API HTTP versionada y documentada.
-- Aceptar trabajos asíncronos, para no bloquear una petición mientras se procesa un vídeo largo.
-- Entregar texto, idioma, segmentos y marcas de tiempo.
-- Eliminar automáticamente los archivos temporales al finalizar.
+Desde la raíz del repositorio, crea el entorno, instala las dependencias y
+copia la configuración de ejemplo:
 
-> OpenAPI se empleará únicamente para documentar esta API HTTP propia. No es una
-> conexión con OpenAI, Gemini ni con ningún servicio externo de IA.
-
-## Alcance inicial
-
-La primera versión admitirá URLs de YouTube y archivos que el usuario suba explícitamente. YouTube será una integración inicial, no una promesa de compatibilidad permanente: los proveedores pueden cambiar sus mecanismos de acceso y cada usuario debe respetar sus permisos y condiciones de uso.
-
-Primero se buscarán subtítulos disponibles. Si no existen, el servicio descargará solo el audio necesario y lo transcribirá localmente.
-
-No se entrenará un modelo de voz desde cero. Se ejecutará un modelo abierto de Whisper mediante `faster-whisper`, que permite inferencia local en CPU o GPU y modelos cuantizados.
-
-## Arquitectura prevista
-
-```text
-Proyecto cliente
-       |
-       | POST /v1/transcriptions
-       v
-Video Transcriber API (FastAPI)
-       |
-       +-- valida URL, token, tamaño y duración
-       +-- crea un trabajo asíncrono
-       |
-       +-- descarga subtítulos o audio temporal (yt-dlp)
-       +-- transcribe localmente (faster-whisper)
-       +-- guarda resultado temporal
-       v
-Cliente consulta GET /v1/transcriptions/{id}
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+Copy-Item .env.example .env
 ```
 
-La API se limita a obtener y transcribir el contenido audiovisual. La interpretación del texto, su almacenamiento y cualquier procesamiento posterior pertenecen a cada aplicación cliente.
-
-## API propuesta
-
-La especificación OpenAPI será la fuente de verdad cuando se implemente el servidor.
-
-### Crear una transcripción
-
-`POST /v1/transcriptions`
-
-```json
-{
-  "source": {
-    "type": "url",
-    "url": "https://www.youtube.com/watch?v=..."
-  },
-  "language": "es"
-}
-```
-
-Respuesta inicial (`202 Accepted`):
-
-```json
-{
-  "id": "trn_01H...",
-  "status": "queued",
-  "createdAt": "2026-09-30T10:00:00Z"
-}
-```
-
-### Consultar un trabajo
-
-`GET /v1/transcriptions/{id}`
-
-Estados: `queued`, `downloading`, `transcribing`, `completed`, `failed`, `expired`.
-
-Respuesta completada:
-
-```json
-{
-  "id": "trn_01H...",
-  "status": "completed",
-  "language": "es",
-  "durationSeconds": 482,
-  "text": "...",
-  "segments": [
-    { "start": 0.0, "end": 4.2, "text": "..." }
-  ],
-  "expiresAt": "2026-10-01T10:00:00Z"
-}
-```
-
-### Eliminar un trabajo
-
-`DELETE /v1/transcriptions/{id}`
-
-Elimina de inmediato el resultado y los archivos temporales asociados.
-
-## Seguridad y privacidad
-
-- Autenticación mediante token de servicio en `Authorization: Bearer <token>`.
-- Lista inicial de dominios permitidos; nunca descargar URLs arbitrarias sin validación.
-- Bloqueo de IPs privadas, localhost y redirecciones inseguras para evitar SSRF.
-- Límites configurables de tamaño, duración y número de trabajos por token.
-- Cola con concurrencia limitada para evitar saturar CPU/GPU.
-- No guardar audio, vídeo o transcripciones más allá del periodo configurado.
-- No versionar tokens, modelos descargados, audios ni resultados de usuarios en Git.
-- Límite configurable de trabajos por token y ventana temporal para proteger la cola.
-
-## Tecnología prevista
-
-| Área | Elección inicial |
-| --- | --- |
-| API | Python + FastAPI |
-| Ejecución | Docker Compose |
-| Transcripción | faster-whisper / CTranslate2 |
-| Obtención de audio o subtítulos | yt-dlp |
-| Cola y estado | SQLite para desarrollo; Redis + worker en producción |
-| Documentación | OpenAPI integrada en FastAPI |
-| Observabilidad | logs estructurados sin contenido de transcripciones |
-
-El perfil inicial será CPU con un modelo `small` cuantizado. GPU y modelos mayores serán opciones de despliegue, no requisitos para arrancar localmente.
-
-## Integración de clientes
-
-Las aplicaciones cliente no deben llamar al transcriptor con un token secreto desde el navegador. Su backend envía el trabajo a esta API, consulta el estado y entrega el resultado a su interfaz. Así se protege el token y varios proyectos pueden reutilizar el servicio.
-
-Variables de entorno previstas en cada proyecto consumidor:
+Edita `.env` antes de iniciar el servicio. Como mínimo, cambia el token:
 
 ```env
-VIDEO_TRANSCRIBER_URL=https://transcriber.example.com
-VIDEO_TRANSCRIBER_TOKEN=replace-with-a-secret
+VIDEO_TRANSCRIBER_TOKEN=un-secreto-local-largo
 ```
 
-## Hoja de ruta
+Inicia la API:
 
-1. Crear la base FastAPI, Docker y comprobaciones de salud.
-2. Definir los contratos OpenAPI y pruebas de autenticación.
-3. Implementar trabajos, almacenamiento temporal y consulta de estado.
-4. Añadir subtítulos y extracción de audio para YouTube.
-5. Integrar `faster-whisper` y segmentos temporizados.
-6. Añadir límites, limpieza automática, trazabilidad y pruebas de carga.
-7. Publicar ejemplos de integración y clientes de referencia.
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
 
-## Requisitos de ejecución
+Después abre:
 
-El software no requerirá una API de pago. Sí necesita una máquina que esté encendida mientras procese trabajos: el ordenador propio con Docker, un servidor propio o un VPS. Una web publicada no puede acceder por sí sola a un transcriptor que solo se ejecute en el ordenador local de otra persona.
+- `http://127.0.0.1:8000/` — interfaz web.
+- `http://127.0.0.1:8000/docs` — documentación interactiva de la API.
+- `http://127.0.0.1:8000/health` — confirma que el proceso HTTP está activo.
+- `http://127.0.0.1:8000/ready` — confirma que SQLite está disponible.
 
-## Estado
+La interfaz web pública no solicita token. Las rutas bajo
+`/v1/transcriptions` sí requieren `Authorization: Bearer <token>`.
 
-Implementación local en progreso. La API acepta URLs de YouTube y subidas
-explícitas de archivos, usa trabajos SQLite, subtítulos VTT o
-`faster-whisper` local, y aplica límites de duración, tamaño y concurrencia.
-La caducidad, limpieza de temporales huérfanos, Docker Compose, worker separado
-y pruebas ya están disponibles.
+## Configuración
+
+`.env.example` contiene todos los valores disponibles. Los más habituales son:
+
+| Variable | Uso | Valor predeterminado |
+| --- | --- | --- |
+| `VIDEO_TRANSCRIBER_TOKEN` | Token requerido por la API privada. | Sin valor; obligatorio |
+| `VIDEO_TRANSCRIBER_ALLOWED_DOMAINS` | Dominios permitidos al importar URLs. | Dominios de YouTube |
+| `VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS` | Duración máxima para vídeos remotos. | `1800` |
+| `VIDEO_TRANSCRIBER_MODEL_PATH` | Ruta al modelo Whisper local. | `models/whisper-small` |
+| `VIDEO_TRANSCRIBER_WHISPER_DEVICE` | Dispositivo de inferencia. | `cpu` |
+| `VIDEO_TRANSCRIBER_WHISPER_COMPUTE_TYPE` | Tipo de cómputo de Whisper. | `int8` |
+| `VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API` | Procesa la cola dentro de la API. | `true` |
+| `VIDEO_TRANSCRIBER_MAX_UPLOAD_BYTES` | Tamaño máximo de archivos subidos. | `500000000` |
+
+Para usar Whisper, coloca un modelo ya convertido en la ruta indicada o cambia
+`VIDEO_TRANSCRIBER_MODEL_PATH`. Los directorios `models/`, `data/` y `tmp/` son
+locales y están excluidos de Git, al igual que `.env`.
+
+## Uso de la API
+
+### Crear una transcripción desde una URL
+
+```powershell
+$headers = @{
+  Authorization = "Bearer un-secreto-local-largo"
+  "Content-Type" = "application/json"
+}
+
+$job = Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/v1/transcriptions" `
+  -Headers $headers `
+  -Body '{"source":{"type":"url","url":"https://youtu.be/VIDEO_ID"},"language":"es"}'
+
+$job
+```
+
+La respuesta tiene estado `queued`. Consulta el trabajo hasta que alcance
+`completed`, `failed` o `expired`:
+
+```powershell
+Invoke-RestMethod `
+  -Uri "http://127.0.0.1:8000/v1/transcriptions/$($job.id)" `
+  -Headers $headers
+```
+
+Para borrar un trabajo y su resultado:
+
+```powershell
+Invoke-RestMethod -Method Delete `
+  -Uri "http://127.0.0.1:8000/v1/transcriptions/$($job.id)" `
+  -Headers $headers
+```
+
+### Subir un archivo
+
+Se aceptan `aac`, `flac`, `m4a`, `mp3`, `mp4`, `ogg`, `opus`, `wav` y `webm`.
+La subida se conserva solo mientras se procesa el trabajo.
+
+```powershell
+$headers = @{ Authorization = "Bearer un-secreto-local-largo" }
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/v1/transcriptions/upload" `
+  -Headers $headers `
+  -Form @{ file = Get-Item "C:\ruta\a\archivo.webm"; language = "es" }
+```
+
+En PowerShell 5.1, que no admite `-Form`, puede usarse `curl.exe -F` con la
+misma cabecera de autorización.
+
+## Worker separado
+
+Por defecto, la API procesa los trabajos en segundo plano. Para ejecutar el
+procesamiento en otro proceso, cambia esta variable en `.env`:
+
+```env
+VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API=false
+```
+
+Y arranca un worker desde otra terminal:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.workers.cli
+```
+
+Para ejecutar una única pasada de la cola, añade `--once`. API y worker deben
+compartir `.env`, `data/` y `tmp/`.
+
+## Docker local
+
+Con Docker Desktop instalado y `.env` configurado:
+
+```powershell
+docker compose up --build
+```
+
+Los datos SQLite, temporales y modelos se montan en `data/`, `tmp/` y
+`models/`, respectivamente. Si se usa worker separado, establece
+`VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API=false` y ejecuta:
+
+```powershell
+docker compose --profile worker up --build
+```
+
+## Desarrollo
+
+Ejecuta las comprobaciones antes de abrir un cambio:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check app tests
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+La guía ampliada de comportamiento local está en
+[docs/uso-local.md](docs/uso-local.md). El plan histórico de implementación se
+conserva en [docs/plan-implementacion.md](docs/plan-implementacion.md).
+
+## Privacidad y límites
+
+- Los resultados caducan según `VIDEO_TRANSCRIBER_RESULT_TTL_SECONDS`.
+- Las URLs se validan contra los dominios permitidos y se bloquean destinos de
+  red privada para evitar SSRF.
+- El servicio limita duración, tamaño de subida, concurrencia y trabajos por
+  token.
+- Los logs no incluyen tokens, URLs de origen, audio ni texto transcrito.

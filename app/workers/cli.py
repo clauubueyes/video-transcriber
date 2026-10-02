@@ -1,9 +1,11 @@
 """Punto de entrada para ejecutar el worker como proceso separado."""
 
 import argparse
+import logging
 from time import sleep
 
 from app.core.config import Settings
+from app.core.logging import configure_logging
 from app.services.processor_factory import (
     create_local_file_processor,
     create_local_processor,
@@ -16,6 +18,8 @@ from app.workers.job_worker import (
     TranscriptionProcessor,
 )
 from app.workers.runner import BoundedJobRunner
+
+logger = logging.getLogger("video_transcriber.worker")
 
 
 def run_once(
@@ -56,16 +60,22 @@ def main() -> int:
         help="Procesa los trabajos disponibles una vez y termina.",
     )
     arguments = parser.parse_args()
+    configure_logging()
     settings = Settings()
     store = SqliteJobStore(settings.database_path)
     upload_store = TemporaryUploadStore(
         settings.temporary_directory,
         settings.max_upload_bytes,
     )
-    upload_store.remove_orphaned(
+    removed_uploads = upload_store.remove_orphaned(
         store.file_source_paths(),
         settings.orphan_upload_age_seconds,
     )
+    if removed_uploads:
+        logger.info(
+            "orphaned_uploads_removed",
+            extra={"removed_uploads": removed_uploads},
+        )
     processor = create_local_processor(
         settings.model_path,
         device=settings.whisper_device,

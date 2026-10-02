@@ -43,6 +43,9 @@ Inicia la API:
 Comprueba el estado en `http://127.0.0.1:8000/health` y explora la API en
 `http://127.0.0.1:8000/docs`.
 
+`/health` confirma que el proceso HTTP está vivo. Para Docker, balanceadores o
+supervisores usa `/ready`: además verifica que SQLite puede atender consultas.
+
 ## Docker Compose
 
 Con Docker instalado, crea `.env` como en el apartado anterior y ejecuta:

@@ -112,6 +112,15 @@ class SqliteJobStore:
             ).fetchone()
         return self._from_row(row) if row else None
 
+    def is_available(self) -> bool:
+        """Comprueba que la conexión SQLite puede atender consultas."""
+        try:
+            with self._lock:
+                self._connection.execute("SELECT 1").fetchone()
+        except sqlite3.Error:
+            return False
+        return True
+
     def claim_next_queued(self) -> StoredJob | None:
         """Reclama el trabajo más antiguo pendiente para un único worker."""
         with self._lock, self._connection:

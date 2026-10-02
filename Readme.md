@@ -6,6 +6,7 @@ El proyecto está pensado como un servicio independiente: no conoce el dominio n
 
 El plan detallado de construcción está en [docs/plan-implementacion.md](docs/plan-implementacion.md).
 La guía para ejecutar y probar el servicio está en [docs/uso-local.md](docs/uso-local.md).
+Para preparar un servidor, consulta [docs/despliegue.md](docs/despliegue.md).
 
 ## Objetivo
 

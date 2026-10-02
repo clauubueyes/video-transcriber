@@ -4,7 +4,14 @@ import json
 import logging
 from datetime import UTC, datetime
 
-_SAFE_FIELDS = ("job_id", "status", "duration_seconds", "removed_uploads")
+_SAFE_FIELDS = (
+    "job_id",
+    "status",
+    "duration_seconds",
+    "removed_uploads",
+    "expired_results",
+    "requeued_jobs",
+)
 
 
 class JsonFormatter(logging.Formatter):

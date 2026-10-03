@@ -70,6 +70,40 @@ def test_public_web_returns_actionable_error_when_youtube_is_blocked(tmp_path):
     assert client.app.state.job_store.claim_next_queued() is None
 
 
+def test_public_web_creates_job_when_optional_cookie_file_is_missing(
+    tmp_path, monkeypatch, caplog,
+):
+    from app.services.duration import YtDlpVideoDurationProbe
+
+    class AnonymousYoutubeDL:
+        def __init__(self, options):
+            assert "cookiefile" not in options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def extract_info(self, url, download):
+            assert download is False
+            return {"duration": 60}
+
+    monkeypatch.setattr("app.services.ytdlp.YoutubeDL", AnonymousYoutubeDL)
+    client = web_client(tmp_path)
+    client.app.dependency_overrides[get_video_duration_probe] = (
+        lambda: YtDlpVideoDurationProbe(
+            cookie_file=tmp_path / "missing-cookies.txt",
+        )
+    )
+
+    response = create_job(client)
+
+    assert response.status_code == 202
+    assert response.json()["job"]["status"] == "queued"
+    assert "youtube_cookie_file_missing" in caplog.text
+
+
 def test_access_key_cannot_read_another_job(tmp_path):
     client = web_client(tmp_path)
     first = create_job(client).json()

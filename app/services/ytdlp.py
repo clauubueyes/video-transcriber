@@ -1,5 +1,6 @@
 """Contexto yt-dlp con una copia temporal de las cookies del servidor."""
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -8,6 +9,8 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from yt_dlp import YoutubeDL
+
+logger = logging.getLogger("video_transcriber.ytdlp")
 
 
 @contextmanager
@@ -23,6 +26,16 @@ def youtube_dl(
     # yt-dlp guarda cookies al cerrar: los secretos de Render son de solo lectura.
     with TemporaryDirectory(prefix="video-transcriber-cookies-") as directory:
         writable_cookies = Path(directory) / "cookies.txt"
-        copyfile(cookie_file, writable_cookies)
-        with YoutubeDL({**options, "cookiefile": str(writable_cookies)}) as ydl:
+        try:
+            copyfile(cookie_file, writable_cookies)
+        except FileNotFoundError:
+            logger.warning(
+                "youtube_cookie_file_missing: %s; se continúa sin cookies. "
+                "Revisa VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE y el archivo secreto.",
+                cookie_file,
+            )
+            effective_options = options
+        else:
+            effective_options = {**options, "cookiefile": str(writable_cookies)}
+        with YoutubeDL(effective_options) as ydl:
             yield ydl

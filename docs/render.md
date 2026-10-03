@@ -83,6 +83,12 @@ Render monta los secretos en `/etc/secrets/`, según su
 Si el bloqueo persiste, utiliza la subida directa o ejecuta el servicio localmente.
 En local configura la variable con la ruta del archivo exportado.
 
+Si aparece `youtube_cookie_file_missing` en los logs, la ruta configurada no
+existe y la aplicación continúa sin cookies. Crea el archivo secreto con el
+nombre exacto `youtube-cookies.txt`, o elimina
+`VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE` si quieres trabajar sin cookies, y vuelve
+a desplegar. Sin cookies, YouTube todavía puede exigir una verificación antibot.
+
 Si el trabajo se crea pero falla después, busca `job_failed`. Comprueba que
 `VIDEO_TRANSCRIBER_GROQ_API_KEY` está configurada en **Render > Environment**:
 el `.env` local no se copia al despliegue.

@@ -33,6 +33,8 @@ from app.services.network_validation import (
     validate_public_host,
 )
 from app.services.processor_factory import (
+    create_groq_file_processor,
+    create_groq_processor,
     create_local_file_processor,
     create_local_processor,
 )
@@ -69,22 +71,29 @@ def get_job_worker(
     settings: Settings = Depends(get_settings),
     job_store: SqliteJobStore = Depends(get_job_store),
 ) -> JobWorker:
-    """Crea una única instancia local del worker por proceso FastAPI."""
+    """Crea una única instancia local o de Groq del worker por proceso FastAPI."""
     worker = getattr(request.app.state, "job_worker", None)
     if worker is None:
+        groq_key = settings.groq_api_key.get_secret_value() if settings.groq_api_key else None
+        if groq_key:
+            processor = create_groq_processor(groq_key, settings.groq_model)
+            file_processor = create_groq_file_processor(groq_key, settings.groq_model)
+        else:
+            processor = create_local_processor(
+                settings.model_path,
+                device=settings.whisper_device,
+                compute_type=settings.whisper_compute_type,
+            )
+            file_processor = create_local_file_processor(
+                settings.model_path,
+                device=settings.whisper_device,
+                compute_type=settings.whisper_compute_type,
+            )
         worker = JobWorker(
             job_store,
-            create_local_processor(
-                settings.model_path,
-                device=settings.whisper_device,
-                compute_type=settings.whisper_compute_type,
-            ),
+            processor,
             settings.result_ttl_seconds,
-            create_local_file_processor(
-                settings.model_path,
-                device=settings.whisper_device,
-                compute_type=settings.whisper_compute_type,
-            ),
+            file_processor,
         )
         request.app.state.job_worker = worker
     return worker
@@ -307,4 +316,5 @@ def _to_response(job: StoredJob) -> TranscriptionJobResponse:
         text=job.text,
         segments=job.segments,
         expires_at=job.expires_at,
+        error_message=job.error_message,
     )

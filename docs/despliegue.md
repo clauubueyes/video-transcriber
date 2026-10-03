@@ -14,9 +14,21 @@ VIDEO_TRANSCRIBER_PUBLIC_WEB_ENABLED=true
 VIDEO_TRANSCRIBER_PUBLIC_JOBS_PER_HOUR=30
 ```
 
-Coloca un modelo CTranslate2 de Whisper en `models/whisper-small`. Sin modelo,
-los vídeos con subtítulos pueden funcionar, pero los que necesitan transcripción
-de audio fallarán. El servicio no descarga el modelo automáticamente.
+## Despliegue Gratuito (0€/mes) con Groq API
+
+Si deseas alojar la aplicación sin un servidor de pago ni requisitos de GPU o alta memoria RAM:
+
+1. Obtén una clave de API gratuita en [Groq Console](https://console.groq.com).
+2. Añade a tu archivo `.env`:
+
+```env
+VIDEO_TRANSCRIBER_GROQ_API_KEY=gsk_tu_clave_de_groq_aqui
+VIDEO_TRANSCRIBER_GROQ_MODEL=whisper-large-v3-turbo
+```
+
+Al configurar la clave de Groq, la aplicación **no necesita descargar ni cargar modelos locales** (0 MB de RAM ocupados por el modelo local). La transcripción de vídeos y archivos multimedia se realiza en la nube a velocidad ultra rápida (~2 segundos por vídeo) usando la cuota gratuita de Groq.
+
+Esto permite desplegar la API en plataformas con tier gratuito como **Vercel, Render Free, Koyeb o Hugging Face Spaces**.
 
 Ejecuta en el servidor:
 

@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     model_path: Path = Path("models/whisper-small")
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
+    groq_api_key: SecretStr | None = None
+    groq_model: str = "whisper-large-v3-turbo"
 
     @cached_property
     def allowed_domain_set(self) -> frozenset[str]:

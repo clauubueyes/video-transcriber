@@ -74,3 +74,22 @@ def test_home_serves_browser_interface(tmp_path):
     assert response.status_code == 200
     assert "Transcribir vídeo" in response.text
     assert client.get("/v1/transcriptions/trn_example").status_code == 401
+
+
+def test_public_job_exposes_safe_worker_error(tmp_path):
+    from app.models.transcriptions import JobStatus
+    from app.services.groq_whisper import GroqAPIError
+    from app.workers.job_worker import JobWorker
+
+    class RejectedProcessor:
+        def process(self, source_url, requested_language):
+            raise GroqAPIError("Groq rechaza la clave de API.")
+
+    client = web_client(tmp_path)
+    data = create_job(client).json()
+    store = client.app.state.job_store
+    JobWorker(store, RejectedProcessor(), 60).process_next()
+    response = client.get(f"/web/jobs/{data['job']['id']}",
+                          headers={"X-Job-Key": data["accessKey"]})
+    assert response.json()["status"] == JobStatus.FAILED
+    assert response.json()["errorMessage"] == "Groq rechaza la clave de API."

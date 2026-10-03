@@ -14,7 +14,7 @@ dependencies = [
   "pydantic-settings>=2.6,<3",
   "python-multipart>=0.0.20,<1",
   "uvicorn[standard]>=0.30,<1",
-  "yt-dlp>=2025.1.15",
+  "yt-dlp[default]>=2026.8.19",
 ]
 
 [project.optional-dependencies]

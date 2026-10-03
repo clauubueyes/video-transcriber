@@ -26,7 +26,11 @@ from app.models.transcriptions import (
     TranscriptionJobResponse,
     TranscriptionMetricsResponse,
 )
-from app.services.duration import VideoDurationProbe, YtDlpVideoDurationProbe
+from app.services.duration import (
+    VideoDurationProbe,
+    VideoMetadataError,
+    YtDlpVideoDurationProbe,
+)
 from app.services.network_validation import (
     SourceHostResolutionError,
     UnsafeSourceHostError,
@@ -247,7 +251,10 @@ def create_transcription(
             headers={"Retry-After": str(settings.rate_limit_window_seconds)},
         )
 
-    duration = duration_probe.get_duration_seconds(source_url)
+    try:
+        duration = duration_probe.get_duration_seconds(source_url)
+    except VideoMetadataError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
     if duration is None:
         raise HTTPException(
             status_code=400,

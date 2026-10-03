@@ -1,7 +1,16 @@
 """Consulta de duración de vídeo antes de crear un trabajo costoso."""
 
+import logging
 from collections.abc import Callable
 from typing import Any, Protocol
+
+from yt_dlp.utils import DownloadError
+
+logger = logging.getLogger("video_transcriber.duration")
+
+
+class VideoMetadataError(RuntimeError):
+    """El proveedor no permite consultar los metadatos del vídeo."""
 
 
 class YoutubeDLContext(Protocol):
@@ -36,8 +45,16 @@ class YtDlpVideoDurationProbe:
             "no_warnings": True,
         }
         factory = self._ydl_factory or self._default_ydl_factory
-        with factory(options) as ydl:
-            metadata = ydl.extract_info(source_url, download=False)
+        try:
+            with factory(options) as ydl:
+                metadata = ydl.extract_info(source_url, download=False)
+        except DownloadError as error:
+            logger.warning("video_metadata_failed", exc_info=True)
+            raise VideoMetadataError(
+                "No se ha podido acceder al vídeo desde el servidor. "
+                "YouTube puede bloquear el acceso desde servicios como Render. "
+                "Prueba con otro vídeo o utiliza Subir Archivo Audio/Vídeo."
+            ) from error
 
         duration = metadata.get("duration")
         return float(duration) if duration is not None else None

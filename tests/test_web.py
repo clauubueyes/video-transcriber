@@ -52,6 +52,24 @@ def test_public_web_creates_job_without_service_token(tmp_path):
     assert result.headers["cache-control"] == "no-store"
 
 
+def test_public_web_returns_actionable_error_when_youtube_is_blocked(tmp_path):
+    from yt_dlp.utils import DownloadError
+
+    from app.services.duration import YtDlpVideoDurationProbe
+
+    def blocked_factory(options):
+        raise DownloadError("Sign in to confirm you're not a bot")
+
+    client = web_client(tmp_path)
+    client.app.dependency_overrides[get_video_duration_probe] = (
+        lambda: YtDlpVideoDurationProbe(blocked_factory)
+    )
+    response = create_job(client)
+    assert response.status_code == 502
+    assert "Subir Archivo" in response.json()["detail"]
+    assert client.app.state.job_store.claim_next_queued() is None
+
+
 def test_access_key_cannot_read_another_job(tmp_path):
     client = web_client(tmp_path)
     first = create_job(client).json()

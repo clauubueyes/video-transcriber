@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+# yt-dlp uses Deno to solve YouTube's JavaScript challenges.
+COPY --from=denoland/deno:bin-2.9.7 /deno /usr/local/bin/deno
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -12,7 +15,10 @@ RUN apt-get update \
 COPY pyproject.toml Readme.md ./
 COPY app ./app
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . \
+    && deno --version \
+    && python -m yt_dlp --version \
+    && python -c "import yt_dlp_ejs"
 
 EXPOSE 8000
 

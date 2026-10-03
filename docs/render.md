@@ -38,6 +38,26 @@ No añadas un disco ni un worker separado para esta prueba.
   bloquea la IP del centro de datos, la subida directa permite comprobar
   la transcripción independientemente del acceso a YouTube.
 
+## Si falla una URL de YouTube
+
+El contenedor incluye Deno y `yt-dlp[default]` (con los scripts EJS) para
+resolver los desafíos JavaScript de YouTube. Si aparece `Failed to extract
+any player response`, sube estos cambios y ejecuta **Manual Deploy > Clear
+build cache & deploy** en Render para reconstruir la imagen. Los logs de
+construcción muestran las versiones de Deno y yt-dlp instaladas. Este error
+por sí solo no confirma un bloqueo de IP.
+
+Si falla la consulta de metadatos, la API devuelve un 502 con un mensaje que
+recomienda probar otro vídeo o subir el archivo. En **Render > Logs**, busca
+`video_metadata_failed`: el traceback conserva la causa de yt-dlp. Si aparece
+`Sign in to confirm you're not a bot`, YouTube está rechazando el acceso desde
+el servidor; cambiar la clave de Groq no resuelve ese bloqueo. Prueba una subida
+directa para comprobar la transcripción sin depender de YouTube.
+
+Si el trabajo se crea pero falla después, busca `job_failed`. Comprueba que
+`VIDEO_TRANSCRIBER_GROQ_API_KEY` está configurada en **Render > Environment**:
+el `.env` local no se copia al despliegue.
+
 ## Límites de esta prueba
 
 Render Free tiene 512 MB de RAM y se suspende después de 15 minutos sin

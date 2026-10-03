@@ -15,3 +15,7 @@ tmp/
 build/
 dist/
 *.egg-info/
+
+# Configuración local y salida de Vercel
+.vercel/
+deploy/vercel/dist/

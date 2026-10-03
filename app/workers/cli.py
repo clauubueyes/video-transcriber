@@ -91,13 +91,18 @@ def main() -> int:
         )
     if settings.groq_api_key and settings.groq_api_key.get_secret_value():
         api_key = settings.groq_api_key.get_secret_value()
-        processor = create_groq_processor(api_key, settings.groq_model)
+        processor = create_groq_processor(
+            api_key,
+            settings.groq_model,
+            cookie_file=settings.youtube_cookie_file,
+        )
         file_processor = create_groq_file_processor(api_key, settings.groq_model)
     else:
         processor = create_local_processor(
             settings.model_path,
             device=settings.whisper_device,
             compute_type=settings.whisper_compute_type,
+            cookie_file=settings.youtube_cookie_file,
         )
         file_processor = create_local_file_processor(
             settings.model_path,

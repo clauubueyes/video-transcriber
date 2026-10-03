@@ -4,6 +4,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.services.ytdlp import youtube_dl
+
 
 class SubtitleFetcher(Protocol):
     """Obtiene un archivo de subtítulos temporal para un origen de vídeo."""
@@ -30,8 +32,11 @@ class YtDlpSubtitleFetcher:
     def __init__(
         self,
         ydl_factory: Callable[[dict[str, Any]], YoutubeDLContext] | None = None,
+        *,
+        cookie_file: Path | None = None,
     ) -> None:
         self._ydl_factory = ydl_factory
+        self._cookie_file = cookie_file
 
     def fetch(
         self,
@@ -59,8 +64,5 @@ class YtDlpSubtitleFetcher:
         subtitle_files = sorted(temporary_directory.glob("*.vtt"))
         return subtitle_files[0] if subtitle_files else None
 
-    @staticmethod
-    def _default_ydl_factory(options: dict[str, Any]) -> YoutubeDLContext:
-        from yt_dlp import YoutubeDL
-
-        return YoutubeDL(options)
+    def _default_ydl_factory(self, options: dict[str, Any]):
+        return youtube_dl(options, self._cookie_file)

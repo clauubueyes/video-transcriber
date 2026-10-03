@@ -17,17 +17,20 @@ def create_local_processor(
     *,
     device: str,
     compute_type: str,
+    cookie_file: Path | None = None,
 ) -> TranscriptionProcessor:
     """Crea el flujo VTT → audio → Whisper usando recursos de la máquina local."""
     audio_processor = AudioWhisperProcessor(
-        YtDlpAudioFetcher(),
+        YtDlpAudioFetcher(cookie_file=cookie_file),
         FasterWhisperTranscriber(
             model_path,
             device=device,
             compute_type=compute_type,
         ),
     )
-    return SubtitleFirstProcessor(YtDlpSubtitleFetcher(), audio_processor)
+    return SubtitleFirstProcessor(
+        YtDlpSubtitleFetcher(cookie_file=cookie_file), audio_processor
+    )
 
 
 def create_local_file_processor(
@@ -49,13 +52,17 @@ def create_local_file_processor(
 def create_groq_processor(
     api_key: str,
     model: str = "whisper-large-v3-turbo",
+    *,
+    cookie_file: Path | None = None,
 ) -> TranscriptionProcessor:
     """Crea el flujo VTT → audio → Groq API en la nube (0 MB RAM local)."""
     audio_processor = AudioWhisperProcessor(
-        YtDlpAudioFetcher(),
+        YtDlpAudioFetcher(cookie_file=cookie_file),
         GroqWhisperTranscriber(api_key=api_key, model=model),
     )
-    return SubtitleFirstProcessor(YtDlpSubtitleFetcher(), audio_processor)
+    return SubtitleFirstProcessor(
+        YtDlpSubtitleFetcher(cookie_file=cookie_file), audio_processor
+    )
 
 
 def create_groq_file_processor(

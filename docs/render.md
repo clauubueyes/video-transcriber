@@ -54,6 +54,35 @@ recomienda probar otro vídeo o subir el archivo. En **Render > Logs**, busca
 el servidor; cambiar la clave de Groq no resuelve ese bloqueo. Prueba una subida
 directa para comprobar la transcripción sin depender de YouTube.
 
+### Configurar cookies para el bloqueo antibot
+
+La aplicación admite `VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE` en la consulta de
+duración, los subtítulos y la descarga de audio, tanto en la API como en el worker.
+Las cookies pueden ayudar a autenticar la sesión, pero no garantizan resolver
+un bloqueo de la IP del servidor.
+
+1. Exporta únicamente las cookies de `youtube.com` en formato Netscape siguiendo
+   la [guía oficial de yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies).
+   La guía recomienda una sesión privada que se cierre después de exportar para
+   evitar que YouTube rote las cookies. Advierte también del riesgo de bloqueo
+   de la cuenta al usarla con yt-dlp; evita utilizar tu cuenta principal.
+2. En **Render > Environment > Secret Files**, añade `youtube-cookies.txt` y
+   pega el contenido del archivo. No lo subas a GitHub ni lo compartas en el chat.
+3. Añade la variable de entorno:
+
+   ```env
+   VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE=/etc/secrets/youtube-cookies.txt
+   ```
+
+4. Despliega el código actualizado y vuelve a probar la URL. La aplicación usa
+   una copia temporal por operación porque yt-dlp actualiza el archivo al cerrar;
+   el secreto original no se modifica. Renueva el secreto cuando caduque la sesión.
+
+Render monta los secretos en `/etc/secrets/`, según su
+[documentación](https://render.com/docs/configure-environment-variables#secret-files).
+Si el bloqueo persiste, utiliza la subida directa o ejecuta el servicio localmente.
+En local configura la variable con la ruta del archivo exportado.
+
 Si el trabajo se crea pero falla después, busca `job_failed`. Comprueba que
 `VIDEO_TRANSCRIBER_GROQ_API_KEY` está configurada en **Render > Environment**:
 el `.env` local no se copia al despliegue.

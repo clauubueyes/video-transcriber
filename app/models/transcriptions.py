@@ -36,6 +36,7 @@ class TranscriptionSource(BaseModel):
 class CreateTranscriptionRequest(BaseModel):
     source: TranscriptionSource
     language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}(-[A-Z]{2})?$")
+    groq_api_key: str | None = Field(default=None, alias="groqApiKey")
 
 
 class Segment(BaseModel):
@@ -65,6 +66,7 @@ class TranscriptionJobResponse(BaseModel):
     text: str | None = None
     segments: list[Segment] | None = None
     expires_at: datetime | None = Field(default=None, serialization_alias="expiresAt")
+    error_message: str | None = Field(default=None, serialization_alias="errorMessage")
 
 
 class TranscriptionMetricsResponse(BaseModel):

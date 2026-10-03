@@ -97,16 +97,20 @@ class JobWorker:
                     },
                 )
             return completed_job
-        except Exception:
+        except Exception as err:
+            msg = "No se ha podido transcribir el vídeo."
+            if "No existe un modelo local" in str(err):
+                msg = "No hay modelo local de Whisper. Configura VIDEO_TRANSCRIBER_GROQ_API_KEY en .env para transcripción gratuita en la nube."
             failed_job = self._store.update_status(
                 job.id,
                 JobStatus.FAILED,
-                error_message="No se ha podido transcribir el vídeo.",
+                error_message=msg,
             )
             if failed_job is not None:
                 logger.warning(
                     "job_failed",
                     extra={"job_id": failed_job.id, "status": failed_job.status.value},
+                    exc_info=True,
                 )
             return failed_job
         finally:

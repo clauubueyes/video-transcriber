@@ -316,4 +316,5 @@ def _to_response(job: StoredJob) -> TranscriptionJobResponse:
         text=job.text,
         segments=job.segments,
         expires_at=job.expires_at,
+        error_message=job.error_message,
     )

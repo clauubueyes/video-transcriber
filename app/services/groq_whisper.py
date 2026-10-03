@@ -76,6 +76,7 @@ class GroqWhisperTranscriber:
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "User-Agent": "video-transcriber/0.1.0",
             },
             method="POST",
         )
@@ -84,9 +85,14 @@ class GroqWhisperTranscriber:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 result_json = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            error_body = e.read().decode("utf-8", errors="ignore")
-            logger.error("Error en respuesta de Groq API (%s): %s", e.code, error_body)
-            raise GroqAPIError(f"Error de Groq API ({e.code}): {error_body}") from e
+            logger.error("groq_http_error status=%s", e.code)
+            messages = {
+                401: "Groq rechaza la clave de API. Revisa VIDEO_TRANSCRIBER_GROQ_API_KEY en .env y reinicia el servicio.",
+                403: "Groq ha denegado el acceso a la transcripción.",
+                413: "El archivo supera el tamaño admitido por Groq.",
+                429: "Groq ha alcanzado su límite de uso. Inténtalo más tarde.",
+            }
+            raise GroqAPIError(messages.get(e.code, "Groq no ha podido procesar la transcripción.")) from e
         except Exception as e:
             logger.error("Fallo de conexión con Groq API: %s", e)
             raise GroqAPIError(f"Fallo de conexión con Groq API: {e}") from e

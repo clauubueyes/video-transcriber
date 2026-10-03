@@ -128,7 +128,7 @@ class SqliteJobStore:
                 """
                 SELECT id FROM transcription_jobs
                 WHERE status = ?
-                ORDER BY created_at, id
+                ORDER BY created_at, rowid
                 LIMIT 1
                 """,
                 (JobStatus.QUEUED.value,),

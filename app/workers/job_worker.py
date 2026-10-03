@@ -98,7 +98,11 @@ class JobWorker:
                 )
             return completed_job
         except Exception as err:
+            from app.services.groq_whisper import GroqAPIError
+
             msg = "No se ha podido transcribir el vídeo."
+            if isinstance(err, GroqAPIError):
+                msg = str(err)
             if "No existe un modelo local" in str(err):
                 msg = "No hay modelo local de Whisper. Configura VIDEO_TRANSCRIBER_GROQ_API_KEY en .env para transcripción gratuita en la nube."
             failed_job = self._store.update_status(

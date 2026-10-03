@@ -43,3 +43,18 @@ def test_groq_whisper_transcribe_file_not_found(tmp_path: Path):
     transcriber = GroqWhisperTranscriber(api_key="gsk_test_key")
     with pytest.raises(FileNotFoundError):
         transcriber.transcribe(tmp_path / "nonexistent.mp3", requested_language=None)
+
+
+def test_groq_auth_error_is_safe_and_request_has_user_agent(tmp_path):
+    from io import BytesIO
+    from urllib.error import HTTPError
+
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"audio")
+    error = HTTPError("https://api.groq.com", 401, "Unauthorized", {},
+                      BytesIO(b"private provider response"))
+    with patch("urllib.request.urlopen", side_effect=error) as request:
+        with pytest.raises(GroqAPIError, match="Groq rechaza la clave") as caught:
+            GroqWhisperTranscriber("secret").transcribe(audio, None)
+    assert "private provider response" not in str(caught.value)
+    assert request.call_args.args[0].get_header("User-agent") == "video-transcriber/0.1.0"

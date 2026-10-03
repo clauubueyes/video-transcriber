@@ -21,7 +21,7 @@ plan **Free**, health check `/ready` y copia las variables de `render.yaml`.
 Configura también Docker Command:
 
 ```sh
-sh -c 'exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 1'
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
 En esta modalidad debes generar tú un `VIDEO_TRANSCRIBER_TOKEN` largo y privado.

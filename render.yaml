@@ -6,7 +6,7 @@ services:
     region: frankfurt
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    dockerCommand: sh -c 'exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 1'
+    dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
     healthCheckPath: /ready
     envVars:
       - key: VIDEO_TRANSCRIBER_TOKEN

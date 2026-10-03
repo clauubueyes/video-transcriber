@@ -4,10 +4,12 @@ from app.api.dependencies import get_settings
 from app.api.routes.transcriptions import (
     get_public_host_validator,
     get_redirect_validator,
+    get_upload_store,
     get_video_duration_probe,
 )
 from app.core.config import Settings
 from app.main import create_app
+from app.services.uploads import TemporaryUploadStore
 
 
 class DurationProbe:
@@ -23,6 +25,9 @@ def web_client(tmp_path, **options) -> TestClient:
     app.dependency_overrides[get_public_host_validator] = lambda: lambda host: None
     app.dependency_overrides[get_redirect_validator] = lambda: lambda url: url
     app.dependency_overrides[get_video_duration_probe] = DurationProbe
+    app.dependency_overrides[get_upload_store] = lambda: TemporaryUploadStore(
+        tmp_path / "uploads", max_upload_bytes=100
+    )
     return TestClient(app)
 
 
@@ -66,6 +71,59 @@ def test_public_web_limits_global_submissions(tmp_path):
     client = web_client(tmp_path, public_jobs_per_hour=1)
     assert create_job(client).status_code == 202
     assert create_job(client).status_code == 429
+
+
+def test_public_upload_is_queued_and_requires_its_access_key(tmp_path):
+    client = web_client(tmp_path)
+    response = client.post(
+        "/web/jobs/upload",
+        files={"file": ("recording.wav", b"audio", "audio/wav")},
+        data={"language": "es"},
+    )
+    assert response.status_code == 202
+    data = response.json()
+    assert data["job"]["status"] == "queued"
+    assert data["job"]["language"] == "es"
+    assert "private-service-secret" not in response.text
+    path = f"/web/jobs/{data['job']['id']}"
+    assert client.get(path).status_code == 404
+    assert client.get(path, headers={"X-Job-Key": data["accessKey"]}).status_code == 200
+    assert len(list((tmp_path / "uploads").iterdir())) == 1
+
+
+def test_public_upload_shares_global_quota_with_url_jobs(tmp_path):
+    client = web_client(tmp_path, public_jobs_per_hour=1)
+    assert create_job(client).status_code == 202
+    assert client.post(
+        "/web/jobs/upload", files={"file": ("recording.wav", b"audio")}
+    ).status_code == 429
+    assert not (tmp_path / "uploads").exists()
+
+
+def test_public_upload_disabled_and_private_upload_still_protected(tmp_path):
+    client = web_client(tmp_path, public_web_enabled=False)
+    files = {"file": ("recording.wav", b"audio")}
+    assert client.post("/web/jobs/upload", files=files).status_code == 404
+    assert client.post("/v1/transcriptions/upload", files=files).status_code == 401
+
+
+def test_cors_allows_only_configured_frontend(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        "VIDEO_TRANSCRIBER_CORS_ORIGINS", "https://transcriber.example.com"
+    )
+    client = web_client(tmp_path)
+    headers = {
+        "Origin": "https://transcriber.example.com",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "X-Job-Key",
+    }
+    response = client.options("/web/jobs/trn_example", headers=headers)
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == headers["Origin"]
+    headers["Origin"] = "https://untrusted.example.com"
+    response = client.options("/web/jobs/trn_example", headers=headers)
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
 
 
 def test_home_serves_browser_interface(tmp_path):

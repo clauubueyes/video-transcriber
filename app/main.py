@@ -1,8 +1,10 @@
 """Punto de entrada HTTP de Video Transcriber."""
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.transcriptions import router as transcriptions_router
 from app.api.routes.web import router as web_router
@@ -19,6 +21,19 @@ def create_app(database_path: str | Path = "data/transcriber.sqlite3") -> FastAP
         description="Servicio autoalojable de transcripción local.",
     )
     app.state.job_store = SqliteJobStore(database_path)
+    # CORS es optativo; no requiere cargar el token para arrancar /health.
+    origins = [
+        origin.strip()
+        for origin in os.environ.get("VIDEO_TRANSCRIBER_CORS_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["Content-Type", "X-Job-Key"],
+        )
     app.include_router(transcriptions_router)
     app.include_router(web_router)
 

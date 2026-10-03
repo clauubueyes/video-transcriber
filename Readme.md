@@ -154,6 +154,19 @@ Los datos SQLite, temporales y modelos se montan en `data/`, `tmp/` y
 docker compose --profile worker up --build
 ```
 
+## Prueba en Render Free
+
+Para alojar la web y la API juntas con transcripción mediante Groq, utiliza
+el Blueprint `render.yaml` y sigue [docs/render.md](docs/render.md).
+En este plan los trabajos y resultados son temporales: se pierden cuando
+Render suspende o reinicia el servicio.
+
+## Publicación en Vercel
+
+La interfaz puede alojarse en Vercel y conectarse a un backend HTTPS con disco
+persistente. Sigue [docs/vercel.md](docs/vercel.md) para configurar el proyecto,
+la URL del backend y CORS.
+
 ## Desarrollo
 
 Ejecuta las comprobaciones antes de abrir un cambio:

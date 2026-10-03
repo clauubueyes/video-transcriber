@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: video-transcriber
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: sh -c 'exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 1'
+    healthCheckPath: /ready
+    envVars:
+      - key: VIDEO_TRANSCRIBER_TOKEN
+        generateValue: true
+      - key: VIDEO_TRANSCRIBER_GROQ_API_KEY
+        sync: false
+      - key: VIDEO_TRANSCRIBER_GROQ_MODEL
+        value: whisper-large-v3-turbo
+      - key: VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API
+        value: "true"
+      - key: VIDEO_TRANSCRIBER_PUBLIC_WEB_ENABLED
+        value: "true"
+      - key: VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS
+        value: "1"
+      - key: VIDEO_TRANSCRIBER_MAX_UPLOAD_BYTES
+        value: "25000000"
+      - key: VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS
+        value: "600"
+      - key: VIDEO_TRANSCRIBER_PUBLIC_JOBS_PER_HOUR
+        value: "10"
+      - key: VIDEO_TRANSCRIBER_MAX_JOBS_PER_TOKEN
+        value: "3"
+      - key: VIDEO_TRANSCRIBER_RESULT_TTL_SECONDS
+        value: "3600"

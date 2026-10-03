@@ -393,6 +393,7 @@
   </footer>
 
   <script>
+    const API_BASE = '';
     const $ = id => document.getElementById(id);
     let activeTab = 'url';
     let selectedFile = null;
@@ -487,7 +488,7 @@
           if (!url) throw new Error('Introduce una URL válida de YouTube.');
 
           showStatus('Procesando enlace...', 'info');
-          const resp = await fetch('/web/jobs', {
+          const resp = await fetch(`${API_BASE}/web/jobs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ source: { type: 'url', url }, language })
@@ -504,16 +505,13 @@
           formData.append('file', selectedFile);
           if (language) formData.append('language', language);
 
-          const resp = await fetch('/v1/transcriptions/upload', {
+          const resp = await fetch(`${API_BASE}/web/jobs/upload`, {
             method: 'POST',
             body: formData
           });
           const data = await parseJSONResponse(resp);
 
-          currentJobResult = data;
-          $('transcript-output').textContent = data.text || '';
-          $('result-section').style.display = 'block';
-          showStatus('¡Transcripción completada con éxito!', 'success');
+          await pollJob(data.job.id, data.accessKey);
         }
       } catch (err) {
         showStatus(err.message, 'error');
@@ -526,7 +524,7 @@
       showStatus('Transcribiendo vídeo en segundo plano...', 'info');
       for (let i = 0; i < 40; i++) {
         await new Promise(r => setTimeout(r, 2000));
-        const resp = await fetch(`/web/jobs/${jobId}`, {
+        const resp = await fetch(`${API_BASE}/web/jobs/${jobId}`, {
           headers: { 'X-Job-Key': accessKey }
         });
         if (!resp.ok) continue;

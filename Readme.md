@@ -11,6 +11,9 @@ remotas ni descarga modelos de Whisper automáticamente.
 ## Requisitos
 
 - Python 3.11 o posterior.
+- Deno (recomendado) o Node.js 22 o posterior disponible en el `PATH` para
+  resolver los desafíos JavaScript de YouTube. El servicio habilita ambos;
+  el contenedor Docker ya incluye Deno.
 - `ffmpeg` disponible en el `PATH` para procesar audio y vídeo con Whisper.
 - Un modelo CTranslate2 compatible con `faster-whisper` si se van a transcribir
   vídeos sin subtítulos o archivos subidos.

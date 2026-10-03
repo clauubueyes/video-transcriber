@@ -2,9 +2,12 @@
 
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol
 
 from yt_dlp.utils import DownloadError
+
+from app.services.ytdlp import youtube_dl
 
 logger = logging.getLogger("video_transcriber.duration")
 
@@ -71,11 +74,15 @@ class YtDlpVideoDurationProbe:
     def __init__(
         self,
         ydl_factory: Callable[[dict[str, Any]], YoutubeDLContext] | None = None,
+        *,
+        cookie_file: Path | None = None,
     ) -> None:
         self._ydl_factory = ydl_factory
+        self._cookie_file = cookie_file
 
     def get_duration_seconds(self, source_url: str) -> float | None:
         options = {
+            "js_runtimes": {"deno": {}, "node": {}},
             "skip_download": True,
             "noplaylist": True,
             "quiet": True,
@@ -93,8 +100,5 @@ class YtDlpVideoDurationProbe:
         duration = metadata.get("duration")
         return float(duration) if duration is not None else None
 
-    @staticmethod
-    def _default_ydl_factory(options: dict[str, Any]) -> YoutubeDLContext:
-        from yt_dlp import YoutubeDL
-
-        return YoutubeDL(options)
+    def _default_ydl_factory(self, options: dict[str, Any]):
+        return youtube_dl(options, self._cookie_file)

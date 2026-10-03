@@ -4,6 +4,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.services.ytdlp import youtube_dl
+
 
 class AudioFetcher(Protocol):
     """Descarga una pista de audio en un directorio temporal controlado."""
@@ -33,12 +35,16 @@ class YtDlpAudioFetcher:
     def __init__(
         self,
         ydl_factory: Callable[[dict[str, Any]], YoutubeDLContext] | None = None,
+        *,
+        cookie_file: Path | None = None,
     ) -> None:
         self._ydl_factory = ydl_factory
+        self._cookie_file = cookie_file
 
     def fetch(self, source_url: str, temporary_directory: Path) -> Path:
         temporary_directory.mkdir(parents=True, exist_ok=True)
         options = {
+            "js_runtimes": {"deno": {}, "node": {}},
             "format": "bestaudio/best",
             "noplaylist": True,
             "outtmpl": str(temporary_directory / "%(id)s.%(ext)s"),
@@ -60,8 +66,5 @@ class YtDlpAudioFetcher:
             raise AudioNotFoundError("No se ha podido obtener el audio del vídeo.")
         return audio_files[0]
 
-    @staticmethod
-    def _default_ydl_factory(options: dict[str, Any]) -> YoutubeDLContext:
-        from yt_dlp import YoutubeDL
-
-        return YoutubeDL(options)
+    def _default_ydl_factory(self, options: dict[str, Any]):
+        return youtube_dl(options, self._cookie_file)

@@ -78,15 +78,22 @@ def get_job_worker(
     """Crea una única instancia local o de Groq del worker por proceso FastAPI."""
     worker = getattr(request.app.state, "job_worker", None)
     if worker is None:
-        groq_key = settings.groq_api_key.get_secret_value() if settings.groq_api_key else None
+        groq_key = (
+            settings.groq_api_key.get_secret_value() if settings.groq_api_key else None
+        )
         if groq_key:
-            processor = create_groq_processor(groq_key, settings.groq_model)
+            processor = create_groq_processor(
+                groq_key,
+                settings.groq_model,
+                cookie_file=settings.youtube_cookie_file,
+            )
             file_processor = create_groq_file_processor(groq_key, settings.groq_model)
         else:
             processor = create_local_processor(
                 settings.model_path,
                 device=settings.whisper_device,
                 compute_type=settings.whisper_compute_type,
+                cookie_file=settings.youtube_cookie_file,
             )
             file_processor = create_local_file_processor(
                 settings.model_path,
@@ -103,9 +110,11 @@ def get_job_worker(
     return worker
 
 
-def get_video_duration_probe() -> VideoDurationProbe:
+def get_video_duration_probe(
+    settings: Settings = Depends(get_settings),
+) -> VideoDurationProbe:
     """Obtiene la sonda local de metadatos usada antes de encolar trabajo."""
-    return YtDlpVideoDurationProbe()
+    return YtDlpVideoDurationProbe(cookie_file=settings.youtube_cookie_file)
 
 
 def get_token_rate_limiter(

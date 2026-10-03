@@ -39,6 +39,7 @@ class YtDlpAudioFetcher:
     def fetch(self, source_url: str, temporary_directory: Path) -> Path:
         temporary_directory.mkdir(parents=True, exist_ok=True)
         options = {
+            "js_runtimes": {"deno": {}, "node": {}},
             "format": "bestaudio/best",
             "noplaylist": True,
             "outtmpl": str(temporary_directory / "%(id)s.%(ext)s"),

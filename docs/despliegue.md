@@ -28,7 +28,38 @@ VIDEO_TRANSCRIBER_GROQ_MODEL=whisper-large-v3-turbo
 
 Al configurar la clave de Groq, la aplicación **no necesita descargar ni cargar modelos locales** (0 MB de RAM ocupados por el modelo local). La transcripción de vídeos y archivos multimedia se realiza en la nube a velocidad ultra rápida (~2 segundos por vídeo) usando la cuota gratuita de Groq.
 
-Esto permite desplegar la API en plataformas con tier gratuito como **Vercel, Render Free, Koyeb o Hugging Face Spaces**.
+Groq evita cargar el modelo local, pero no elimina la necesidad de almacenar
+trabajos y archivos temporales ni de ejecutar el procesamiento en segundo plano.
+El coste y la disponibilidad dependen de las cuotas del proveedor y del alojamiento.
+
+### Vercel
+
+La aplicación actual no está preparada para desplegarse íntegramente en Vercel:
+
+- `app/main.py` crea una base SQLite en `data/transcriber.sqlite3` al arrancar.
+  Los trabajos necesitan almacenamiento persistente compartido entre instancias;
+  mover SQLite a `/tmp` no resuelve este requisito.
+- La API procesa la cola mediante tareas de fondo y un ejecutor local. Ese
+  procesamiento debe adaptarse al ciclo de vida y al tiempo máximo de las
+  funciones, o ejecutarse en un backend separado.
+- Las funciones de Vercel admiten cuerpos de petición de hasta 4,5 MB, mientras
+  que la aplicación permite subidas de hasta 500 MB. Para conservar esas subidas
+  se necesita almacenamiento externo con subida directa o un backend separado.
+- El modo Whisper local requiere un modelo y ffmpeg; configurar Groq no elimina
+  automáticamente las dependencias Python locales del proyecto.
+
+Consulta los [límites de Vercel Functions](https://vercel.com/docs/functions/limitations)
+antes de configurar el despliegue.
+
+Una opción que conserva la arquitectura actual es publicar la interfaz HTML
+en Vercel y alojar la API y el worker en un servidor con disco persistente.
+La interfaz debe dirigir sus solicitudes a ese backend, mediante un proxy o
+una URL configurada con CORS. El token privado y la clave de Groq deben
+permanecer exclusivamente en el backend.
+
+Para alojar también la API en Vercel, primero hay que sustituir SQLite por
+almacenamiento compartido, adaptar el procesamiento y resolver las subidas
+grandes. Un `vercel.json` por sí solo no realiza estos cambios.
 
 Ejecuta en el servidor:
 

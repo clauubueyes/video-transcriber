@@ -62,3 +62,25 @@ def test_probe_wraps_provider_failure_without_exposing_raw_error(caplog) -> None
     assert "Subir Archivo" in str(caught.value)
     assert "private details" not in str(caught.value)
     assert "video_metadata_failed" in caplog.text
+
+
+@pytest.mark.parametrize(("provider_error", "expected"), [
+    ("Sign in to confirm you’re not a bot", "Limpiar la caché"),
+    ("Private video", "requiere iniciar sesión"),
+    ("Video unavailable", "no está disponible"),
+    ("Requested format is not available", "runtime JavaScript"),
+    ("HTTP Error 429: Too Many Requests", "limitado temporalmente"),
+    ("Connection timed out: internal-host", "Revisa los logs"),
+])
+def test_probe_distinguishes_provider_errors(provider_error, expected):
+    def failing_factory(options):
+        raise DownloadError(provider_error)
+
+    with pytest.raises(VideoMetadataError) as caught:
+        YtDlpVideoDurationProbe(failing_factory).get_duration_seconds(
+            "https://www.youtube.com/watch?v=abc"
+        )
+
+    assert expected in str(caught.value)
+    assert "Subir Archivo" in str(caught.value)
+    assert "internal-host" not in str(caught.value)

@@ -9,6 +9,44 @@ from yt_dlp.utils import DownloadError
 logger = logging.getLogger("video_transcriber.duration")
 
 
+def _provider_error_message(error: DownloadError) -> str:
+    """Clasifica el fallo sin enviar detalles internos del proveedor al cliente."""
+    detail = str(error).lower().replace("’", "'")
+    if "confirm you're not a bot" in detail:
+        return (
+            "YouTube exige verificar que el servidor no es un bot. "
+            "Limpiar la caché no resuelve este bloqueo. "
+            "Utiliza Subir Archivo Audio/Vídeo o ejecuta el servicio localmente."
+        )
+    if any(marker in detail for marker in (
+        "private video", "video unavailable", "video has been removed",
+        "not available in your country", "sign in to confirm your age",
+    )):
+        return (
+            "El vídeo no está disponible para el servidor o requiere iniciar sesión. "
+            "Prueba con un vídeo público o utiliza Subir Archivo Audio/Vídeo."
+        )
+    if any(marker in detail for marker in (
+        "javascript runtime", "challenge solving", "signature extraction failed",
+        "nsig extraction failed", "requested format is not available",
+    )):
+        return (
+            "El servidor no ha podido obtener los formatos del vídeo. "
+            "Revisa yt-dlp y el runtime JavaScript en el despliegue. "
+            "Puedes utilizar Subir Archivo Audio/Vídeo."
+        )
+    if "429" in detail or "too many requests" in detail:
+        return (
+            "YouTube ha limitado temporalmente las solicitudes del servidor. "
+            "Inténtalo más tarde o utiliza Subir Archivo Audio/Vídeo."
+        )
+    return (
+        "No se han podido consultar los metadatos del vídeo desde el servidor. "
+        "Revisa los logs del servidor para identificar la causa. "
+        "Puedes utilizar Subir Archivo Audio/Vídeo."
+    )
+
+
 class VideoMetadataError(RuntimeError):
     """El proveedor no permite consultar los metadatos del vídeo."""
 
@@ -51,11 +89,7 @@ class YtDlpVideoDurationProbe:
                 metadata = ydl.extract_info(source_url, download=False)
         except DownloadError as error:
             logger.warning("video_metadata_failed", exc_info=True)
-            raise VideoMetadataError(
-                "No se ha podido acceder al vídeo desde el servidor. "
-                "YouTube puede bloquear el acceso desde servicios como Render. "
-                "Prueba con otro vídeo o utiliza Subir Archivo Audio/Vídeo."
-            ) from error
+            raise VideoMetadataError(_provider_error_message(error)) from error
 
         duration = metadata.get("duration")
         return float(duration) if duration is not None else None

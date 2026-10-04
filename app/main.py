@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.transcriptions import router as transcriptions_router
 from app.api.routes.web import router as web_router
 from app.core.logging import configure_logging
+from app.services.youtube_metadata import YoutubeMetadataCache
 from app.storage.jobs import SqliteJobStore
 
 
@@ -23,6 +24,7 @@ def create_app(database_path: str | Path = "data/transcriber.sqlite3") -> FastAP
     )
     app.state.job_store = SqliteJobStore(database_path)
     app.state.runtime_lock = RLock()
+    app.state.youtube_metadata_cache = YoutubeMetadataCache()
     # CORS es optativo; no requiere cargar el token para arrancar /health.
     origins = [
         origin.strip()

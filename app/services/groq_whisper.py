@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -74,7 +75,7 @@ class GroqWhisperTranscriber:
 
         if (
             audio_path.stat().st_size >= _PREPARE_ABOVE_BYTES
-            or audio_path.suffix.lower() in {".mp4", ".webm", ".aac", ".opus"}
+            or audio_path.suffix.lower() in {".aac", ".opus"}
         ):
             return self._transcribe_chunks(audio_path, requested_language)
         return self._transcribe_file(audio_path, requested_language)
@@ -82,38 +83,51 @@ class GroqWhisperTranscriber:
     def _transcribe_chunks(
         self, audio_path: Path, requested_language: str | None,
     ) -> TranscriptionResult:
-        """Extrae solo audio; genera, envía y borra un bloque cada vez."""
+        """Prepara como máximo un bloque por delante del envío en curso."""
         duration = self._get_duration(audio_path)
         segments: list[Segment] = []
         texts: list[str] = []
         language = requested_language
         with TemporaryDirectory(prefix="groq-audio-") as directory:
-            chunk = Path(directory) / "chunk.flac"
-            for index in range(math.ceil(duration / self._chunk_seconds)):
-                start = index * self._chunk_seconds
-                end = min(start + self._chunk_seconds, duration)
-                # Un segundo de contexto por lado; cada bloque conserva el centro.
-                offset = max(0, start - 1)
-                length = min(duration, end + 1) - offset
-                self._convert_chunk(audio_path, chunk, offset, length)
-                result = self._transcribe_file(chunk, requested_language)
-                language = language or result.language
-                kept_segments = []
-                for segment in result.segments:
-                    midpoint = offset + (segment.start + segment.end) / 2
-                    if start <= midpoint < end:
-                        kept_segments.append(Segment(
-                            start=max(start, segment.start + offset),
-                            end=min(end, segment.end + offset),
-                            text=segment.text,
-                        ))
-                segments.extend(kept_segments)
-                text = " ".join(segment.text for segment in kept_segments)
-                if not result.segments:
-                    text = result.text
-                if text:
-                    texts.append(text)
-                chunk.unlink()
+            count = math.ceil(duration / self._chunk_seconds)
+            with ThreadPoolExecutor(max_workers=1) as encoder:
+                def prepare(index: int):
+                    chunk = Path(directory) / f"chunk-{index}.flac"
+                    start = index * self._chunk_seconds
+                    end = min(start + self._chunk_seconds, duration)
+                    # Un segundo de contexto por lado, asignado por punto medio.
+                    offset = max(0, start - 1)
+                    length = min(duration, end + 1) - offset
+                    future = encoder.submit(
+                        self._convert_chunk, audio_path, chunk, offset, length,
+                    )
+                    return future, chunk, start, end, offset
+
+                current = prepare(0)
+                for index in range(count):
+                    future, chunk, start, end, offset = current
+                    future.result()
+                    upcoming = prepare(index + 1) if index + 1 < count else None
+                    result = self._transcribe_file(chunk, requested_language)
+                    language = language or result.language
+                    kept_segments = []
+                    for segment in result.segments:
+                        midpoint = offset + (segment.start + segment.end) / 2
+                        if start <= midpoint < end:
+                            kept_segments.append(Segment(
+                                start=max(start, segment.start + offset),
+                                end=min(end, segment.end + offset),
+                                text=segment.text,
+                            ))
+                    segments.extend(kept_segments)
+                    text = " ".join(segment.text for segment in kept_segments)
+                    if not result.segments:
+                        text = result.text
+                    if text:
+                        texts.append(text)
+                    chunk.unlink()
+                    if upcoming is not None:
+                        current = upcoming
         return TranscriptionResult(
             language=language,
             duration_seconds=duration,

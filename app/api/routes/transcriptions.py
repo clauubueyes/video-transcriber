@@ -75,7 +75,9 @@ def get_job_worker(
     with request.app.state.runtime_lock:
         worker = getattr(request.app.state, "job_worker", None)
         if worker is None:
-            processor, file_processor = create_processors(settings)
+            processor, file_processor = create_processors(
+                settings, metadata_cache=request.app.state.youtube_metadata_cache,
+            )
             worker = JobWorker(
                 job_store, processor, settings.result_ttl_seconds, file_processor,
             )
@@ -84,12 +86,14 @@ def get_job_worker(
 
 
 def get_video_duration_probe(
+    request: Request,
     settings: Settings = Depends(get_settings),
 ) -> VideoDurationProbe:
     """Obtiene la sonda local de metadatos usada antes de encolar trabajo."""
     return YtDlpVideoDurationProbe(
         cookie_file=settings.youtube_cookie_file,
         download_options=youtube_download_options(settings),
+        metadata_cache=request.app.state.youtube_metadata_cache,
     )
 
 

@@ -267,11 +267,21 @@ con `Retry-After: 30` antes de copiar archivos o consultar metadatos de YouTube.
 La admisión se vuelve a comprobar de forma atómica al registrar el trabajo.
 
 El envío a Groq lee bloques de 64 KB. Los archivos de al menos 20 MB y los
-formatos MP4, WebM, AAC y Opus se preparan con FFmpeg como FLAC mono a 16 kHz.
-Se procesa un fragmento de hasta 10 minutos cada vez, con contexto en los
-bordes, y se elimina antes de crear el siguiente. Las marcas de tiempo del
-resultado se ajustan al vídeo completo. Esto permite procesar audio descargado
-de más de 25 MB sin enviar un archivo de ese tamaño a Groq.
+formatos AAC y Opus se preparan con FFmpeg como FLAC mono a 16 kHz. Los archivos
+pequeños en formatos compatibles, incluidos MP4 y WebM, se envían directamente
+para evitar procesos de conversión. Se transcribe un fragmento de hasta
+10 minutos cada vez mientras se prepara el siguiente: hay un máximo de dos
+fragmentos temporales, un FFmpeg y una solicitud a Groq por trabajo. Las marcas
+de tiempo del resultado se ajustan al vídeo completo. Esto permite procesar
+audio descargado de más de 25 MB sin enviar un archivo de ese tamaño a Groq.
+
+API, subtítulos y audio comparten metadatos de YouTube durante cinco minutos,
+con un máximo de 4 MB de JSON y 16 entradas por proceso. Con metadatos vigentes
+se evita repetir las consultas al player y sus desafíos JavaScript. Si ya se
+sabe que no hay subtítulos del idioma solicitado, se pasa directamente al
+audio. Las extracciones nuevas se realizan una a la vez y las peticiones
+simultáneas al mismo vídeo reutilizan el resultado. Si un enlace temporal falla,
+se consulta de nuevo una vez; un 429 se devuelve sin repetir solicitudes.
 
 Groq conserva sus propias cuotas; dividir el audio no amplía los segundos de
 audio permitidos por hora o por día. Usa una cuenta Free si quieres mantener

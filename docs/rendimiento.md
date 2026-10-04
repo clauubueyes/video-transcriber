@@ -20,6 +20,28 @@ Los subtítulos de YouTube ya eran la primera opción y se mantienen: cuando
 están disponibles no hace falta inferencia. La inferencia remota sigue usando
 `whisper-large-v3-turbo`; no se aumenta la concurrencia en Render.
 
+## Segundo ajuste de velocidad
+
+| Paso anterior | Paso actual | Límite de recursos |
+| --- | --- | --- |
+| Hasta tres extracciones de metadatos para duración, subtítulos y audio. | Una extracción compartida cuando los metadatos siguen vigentes. | Caché por proceso de 4 MB de JSON, 16 entradas y cinco minutos de vida. |
+| Se iniciaba yt-dlp para buscar subtítulos incluso si ya se sabía que no existían. | Se pasa directamente al audio cuando los metadatos descartan el idioma solicitado. | Mantiene la prioridad de subtítulos disponibles. |
+| Se convertían todos los MP4 y WebM, incluidos los pequeños. | Se envían directamente los formatos compatibles de menos de 20 MB. | El cuerpo HTTP mantiene lecturas de 64 KB. |
+| Preparación y transcripción de fragmentos una después de otra. | Se prepara el siguiente mientras Groq procesa el actual. | Un encoder, una solicitud a Groq y hasta dos archivos temporales por trabajo. |
+
+La caché conserva copias independientes para que yt-dlp no modifique los
+metadatos de otro trabajo. Si un enlace temporal falla, se invalida y se vuelve
+a extraer una vez; un error 429 no genera otra solicitud. Las extracciones
+nuevas se serializan por proceso y las peticiones simultáneas al mismo vídeo
+comparten el resultado. Una cola que tarde más de cinco minutos puede necesitar
+una extracción nueva al procesar el trabajo. La caché no se comparte entre la
+API y un worker que corran en procesos separados.
+
+Estas optimizaciones se activan con el código actualizado y no requieren
+variables de entorno adicionales. El límite de una hora y la concurrencia de
+un trabajo se conservan. El envío directo evita la conversión local, aunque
+puede enviar más bytes que una versión FLAC reducida del mismo archivo.
+
 ## Medición local
 
 Con un archivo sintético de **12.000.000 bytes**, `tracemalloc` midió el pico de
@@ -34,6 +56,20 @@ La reducción en esta operación es de aproximadamente **99,4 %**. La respuesta
 del proveedor se simuló y no se enviaron datos externos. Esto no mide la RAM
 total del proceso, FFmpeg, yt-dlp, Node, la red ni el tiempo de inferencia.
 No hay todavía un porcentaje de aceleración medido en Render.
+
+La segunda revisión comparó la versión anterior y actual con esperas
+controladas, sin hacer llamadas externas. Mediana de tres ejecuciones para
+seis fragmentos, simulando 50 ms de preparación y 80 ms de proveedor por
+fragmento:
+
+| Operación simulada | Antes | Ahora |
+| --- | ---: | ---: |
+| Seis fragmentos | 789,1 ms | 536,3 ms |
+| Tres pasos con extracción de metadatos de 60 ms | 181,0 ms; tres extracciones | 60,7 ms; una extracción |
+
+El flujo de fragmentos redujo su tiempo aproximadamente un **32 % en esta
+simulación**. Las esperas son artificiales: este dato valida el solapamiento
+de etapas y no predice la aceleración en Render o en una llamada real a Groq.
 
 Los logs `job_completed` incluyen `processing_seconds` junto a la duración del
 audio. Para medir velocidad real, compara el mismo vídeo y el mismo idioma
@@ -89,10 +125,14 @@ FFmpeg y FFprobe están incluidos en Docker. Para ejecución local con Groq,
 instálalos y asegúrate de que ambos estén en `PATH` antes de procesar vídeos
 o archivos grandes. El entorno de esta revisión no tenía esos ejecutables:
 se verificaron los comandos y el ensamblado mediante adaptadores simulados,
-y el envío multipart con una conexión HTTP local real. No se ejecutó inferencia
-real ni una prueba de carga en Render.
+y el envío multipart con una conexión HTTP local real. También se ejecutó
+yt-dlp real contra un servidor HTTP local para verificar que los metadatos
+reutilizados seleccionan y descargan únicamente audio o los subtítulos
+solicitados. No se ejecutó inferencia real ni una prueba de carga en Render.
 
-Cada fragmento se extrae, transcribe y elimina antes de continuar. Se añade un
+Cada fragmento se elimina tras su transcripción; como máximo se prepara uno
+adicional durante la espera del proveedor. Los dos temporales se eliminan
+también si falla la conversión o la solicitud. Se añade un
 segundo de contexto por borde; los segmentos se asignan al fragmento que
 contiene su punto medio y las marcas de tiempo se recortan a ese intervalo.
 Las fronteras pueden afectar algunas palabras: revisa el texto si necesitas

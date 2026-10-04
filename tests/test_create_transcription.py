@@ -141,7 +141,7 @@ def test_concurrent_requests_share_one_worker_and_one_runner(tmp_path):
     settings = Settings(token="test-token", _env_file=None)
     barrier = Barrier(4)
 
-    def processors(_):
+    def processors(_, **kwargs):
         sleep(0.02)
         return object(), object()
 

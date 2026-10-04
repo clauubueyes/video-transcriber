@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from yt_dlp.utils import DownloadError
 
+from app.services.youtube_metadata import YoutubeMetadataCache, extract_with_metadata
 from app.services.ytdlp import youtube_dl
 
 logger = logging.getLogger("video_transcriber.duration")
@@ -61,6 +62,10 @@ class YoutubeDLContext(Protocol):
 
     def extract_info(self, url: str, download: bool) -> dict[str, Any]: ...
 
+    def process_ie_result(
+        self, info: dict[str, Any], download: bool,
+    ) -> dict[str, Any]: ...
+
 
 class VideoDurationProbe(Protocol):
     """Obtiene duración en segundos sin descargar el contenido audiovisual."""
@@ -77,12 +82,19 @@ class YtDlpVideoDurationProbe:
         *,
         cookie_file: Path | None = None,
         download_options: dict[str, Any] | None = None,
+        metadata_cache: YoutubeMetadataCache | None = None,
     ) -> None:
         self._ydl_factory = ydl_factory
         self._cookie_file = cookie_file
         self._download_options = download_options or {}
+        self._metadata_cache = metadata_cache
 
     def get_duration_seconds(self, source_url: str) -> float | None:
+        if self._metadata_cache is not None:
+            metadata = self._metadata_cache.get(source_url)
+            if metadata is not None:
+                duration = metadata.get("duration")
+                return float(duration) if duration is not None else None
         options = {
             **self._download_options,
             "js_runtimes": self._download_options.get(
@@ -97,7 +109,9 @@ class YtDlpVideoDurationProbe:
         factory = self._ydl_factory or self._default_ydl_factory
         try:
             with factory(options) as ydl:
-                metadata = ydl.extract_info(source_url, download=False)
+                metadata = extract_with_metadata(
+                    ydl, source_url, download=False, cache=self._metadata_cache,
+                )
         except DownloadError as error:
             logger.warning("video_metadata_failed", exc_info=True)
             raise VideoMetadataError(_provider_error_message(error)) from error

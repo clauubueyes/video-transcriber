@@ -133,7 +133,7 @@ def test_large_audio_is_processed_sequentially_with_global_timestamps(tmp_path):
         if command[0] == "ffprobe":
             return SimpleNamespace(stdout="125\n")
         target = Path(command[-1])
-        assert not target.exists()  # El bloque anterior se eliminó.
+        assert not target.exists()
         assert command[command.index("-ar") + 1] == "16000"
         assert command[command.index("-ac") + 1] == "1"
         assert command[command.index("-c:a") + 1] == "flac"
@@ -178,6 +178,110 @@ def test_large_audio_is_processed_sequentially_with_global_timestamps(tmp_path):
     assert not list(tmp_path.glob("*.flac"))
 
 
+@pytest.mark.parametrize("extension", [".mp3", ".m4a", ".mp4", ".webm"])
+def test_small_supported_files_are_sent_without_ffmpeg(tmp_path, extension):
+    audio = tmp_path / f"small{extension}"
+    audio.write_bytes(b"synthetic audio")
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.read.return_value = b'{"text": "Hola", "duration": 1}'
+    with (
+        patch("urllib.request.urlopen", return_value=response) as upload,
+        patch("app.services.groq_whisper.subprocess.run") as convert,
+    ):
+        result = GroqWhisperTranscriber("test").transcribe(audio, "es")
+    assert result.text == "Hola"
+    assert b"synthetic audio" in b"".join(upload.call_args.args[0].data)
+    convert.assert_not_called()
+
+
+def test_next_chunk_is_prepared_during_upload_with_bounded_resources(tmp_path):
+    from threading import Event, Lock
+
+    from app.workers.job_worker import TranscriptionResult
+
+    audio = tmp_path / "large.wav"
+    with audio.open("wb") as source:
+        source.truncate(25_000_001)
+    second_ready = Event()
+    uploading = Event()
+    lock = Lock()
+    active_encoders = 0
+    maximum_encoders = 0
+    maximum_files = 0
+    uploads = []
+
+    def convert(source, target, offset, length):
+        nonlocal active_encoders, maximum_encoders, maximum_files
+        with lock:
+            active_encoders += 1
+            maximum_encoders = max(maximum_encoders, active_encoders)
+        if offset > 0:
+            assert uploading.wait(timeout=2)
+        target.write_bytes(b"prepared")
+        with lock:
+            maximum_files = max(maximum_files, len(list(target.parent.glob("*.flac"))))
+            active_encoders -= 1
+        if offset == 59:
+            second_ready.set()
+
+    def upload(path, language):
+        uploads.append(path)
+        assert path.read_bytes() == b"prepared"
+        if len(uploads) == 1:
+            uploading.set()
+            assert second_ready.wait(timeout=2)
+        return TranscriptionResult(language="es", duration_seconds=60,
+                                   text="Audio", segments=[])
+
+    transcriber = GroqWhisperTranscriber("test", chunk_seconds=60)
+    with (
+        patch.object(transcriber, "_get_duration", return_value=125),
+        patch.object(transcriber, "_convert_chunk", side_effect=convert),
+        patch.object(transcriber, "_transcribe_file", side_effect=upload),
+    ):
+        result = transcriber.transcribe(audio, "es")
+    assert result.text == "Audio Audio Audio"
+    assert len(uploads) == 3
+    assert maximum_encoders == 1
+    assert maximum_files == 2
+    assert all(not path.exists() for path in uploads)
+
+
+def test_upload_failure_waits_for_encoder_and_removes_all_chunks(tmp_path):
+    from threading import Event
+
+    audio = tmp_path / "large.wav"
+    with audio.open("wb") as source:
+        source.truncate(25_000_001)
+    next_started = Event()
+    stop_encoding = Event()
+    paths = []
+
+    def convert(source, target, offset, length):
+        paths.append(target)
+        if offset > 0:
+            next_started.set()
+            assert stop_encoding.wait(timeout=2)
+        target.write_bytes(b"audio")
+
+    def upload(*args):
+        assert next_started.wait(timeout=2)
+        stop_encoding.set()
+        raise GroqAPIError("upload failed")
+
+    transcriber = GroqWhisperTranscriber("test", chunk_seconds=60)
+    with (
+        patch.object(transcriber, "_get_duration", return_value=125),
+        patch.object(transcriber, "_convert_chunk", side_effect=convert),
+        patch.object(transcriber, "_transcribe_file", side_effect=upload),
+        pytest.raises(GroqAPIError, match="upload failed"),
+    ):
+        transcriber.transcribe(audio, "es")
+    assert len(paths) == 2
+    assert all(not path.exists() for path in paths)
+
+
 @pytest.mark.parametrize("duration", ["nan", "inf", "0", "N/A"])
 def test_invalid_audio_duration_is_rejected_safely(tmp_path, duration):
     from types import SimpleNamespace
@@ -191,7 +295,7 @@ def test_invalid_audio_duration_is_rejected_safely(tmp_path, duration):
 def test_conversion_failure_removes_partial_audio(tmp_path):
     import subprocess
 
-    audio = tmp_path / "video.mp4"
+    audio = tmp_path / "audio.aac"
     audio.write_bytes(b"video")
     converted_paths = []
 

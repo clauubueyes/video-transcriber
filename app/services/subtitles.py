@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.services.youtube_metadata import YoutubeMetadataCache, extract_with_metadata
 from app.services.ytdlp import youtube_dl
 
 
@@ -25,6 +26,10 @@ class YoutubeDLContext(Protocol):
 
     def extract_info(self, url: str, download: bool) -> dict[str, Any]: ...
 
+    def process_ie_result(
+        self, info: dict[str, Any], download: bool,
+    ) -> dict[str, Any]: ...
+
 
 class YtDlpSubtitleFetcher:
     """Pide subtítulos VTT sin descargar el vídeo ni su pista de audio."""
@@ -35,10 +40,12 @@ class YtDlpSubtitleFetcher:
         *,
         cookie_file: Path | None = None,
         download_options: dict[str, Any] | None = None,
+        metadata_cache: YoutubeMetadataCache | None = None,
     ) -> None:
         self._ydl_factory = ydl_factory
         self._cookie_file = cookie_file
         self._download_options = download_options or {}
+        self._metadata_cache = metadata_cache
 
     def fetch(
         self,
@@ -46,6 +53,16 @@ class YtDlpSubtitleFetcher:
         language: str | None,
         temporary_directory: Path,
     ) -> Path | None:
+        if self._metadata_cache is not None:
+            metadata = self._metadata_cache.get(source_url)
+            subtitle_language = language or "es"
+            if metadata is not None and all(
+                key in metadata for key in ("subtitles", "automatic_captions")
+            ) and not any(
+                subtitle_language in (metadata[key] or {})
+                for key in ("subtitles", "automatic_captions")
+            ):
+                return None
         temporary_directory.mkdir(parents=True, exist_ok=True)
         options = {
             **self._download_options,
@@ -53,6 +70,7 @@ class YtDlpSubtitleFetcher:
                 "js_runtimes", {"deno": {}, "node": {}},
             ),
             "skip_download": True,
+            "noplaylist": True,
             "writesubtitles": True,
             "writeautomaticsub": True,
             "subtitleslangs": [language or "es"],
@@ -64,7 +82,9 @@ class YtDlpSubtitleFetcher:
         }
         factory = self._ydl_factory or self._default_ydl_factory
         with factory(options) as ydl:
-            ydl.extract_info(source_url, download=True)
+            extract_with_metadata(
+                ydl, source_url, download=True, cache=self._metadata_cache,
+            )
 
         subtitle_files = sorted(temporary_directory.glob("*.vtt"))
         return subtitle_files[0] if subtitle_files else None

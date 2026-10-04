@@ -11,6 +11,7 @@ from app.services.groq_whisper import GroqWhisperTranscriber
 from app.services.subtitle_processor import SubtitleFirstProcessor
 from app.services.subtitles import YtDlpSubtitleFetcher
 from app.services.whisper import FasterWhisperTranscriber
+from app.services.youtube_metadata import YoutubeMetadataCache
 from app.services.ytdlp import youtube_download_options
 from app.workers.job_worker import TranscriptionProcessor
 
@@ -23,10 +24,14 @@ def create_local_processor(
     cookie_file: Path | None = None,
     download_options: dict[str, Any] | None = None,
     transcriber: AudioTranscriber | None = None,
+    metadata_cache: YoutubeMetadataCache | None = None,
 ) -> TranscriptionProcessor:
     """Crea el flujo VTT → audio → Whisper usando recursos de la máquina local."""
     audio_processor = AudioWhisperProcessor(
-        YtDlpAudioFetcher(cookie_file=cookie_file, download_options=download_options),
+        YtDlpAudioFetcher(
+            cookie_file=cookie_file, download_options=download_options,
+            metadata_cache=metadata_cache,
+        ),
         transcriber or FasterWhisperTranscriber(
             model_path,
             device=device,
@@ -36,6 +41,7 @@ def create_local_processor(
     return SubtitleFirstProcessor(
         YtDlpSubtitleFetcher(
             cookie_file=cookie_file, download_options=download_options,
+            metadata_cache=metadata_cache,
         ),
         audio_processor,
     )
@@ -65,15 +71,20 @@ def create_groq_processor(
     cookie_file: Path | None = None,
     download_options: dict[str, Any] | None = None,
     transcriber: AudioTranscriber | None = None,
+    metadata_cache: YoutubeMetadataCache | None = None,
 ) -> TranscriptionProcessor:
     """Crea el flujo VTT → audio → Groq API sin cargar un modelo local."""
     audio_processor = AudioWhisperProcessor(
-        YtDlpAudioFetcher(cookie_file=cookie_file, download_options=download_options),
+        YtDlpAudioFetcher(
+            cookie_file=cookie_file, download_options=download_options,
+            metadata_cache=metadata_cache,
+        ),
         transcriber or GroqWhisperTranscriber(api_key=api_key, model=model),
     )
     return SubtitleFirstProcessor(
         YtDlpSubtitleFetcher(
             cookie_file=cookie_file, download_options=download_options,
+            metadata_cache=metadata_cache,
         ),
         audio_processor,
     )
@@ -93,9 +104,12 @@ def create_groq_file_processor(
 
 def create_processors(
     settings: Settings,
+    *,
+    metadata_cache: YoutubeMetadataCache | None = None,
 ) -> tuple[TranscriptionProcessor, LocalFileProcessor]:
     """Comparte modelo y ajustes entre URLs y archivos en API y worker."""
     options = youtube_download_options(settings)
+    metadata_cache = metadata_cache or YoutubeMetadataCache()
     if settings.groq_api_key and settings.groq_api_key.get_secret_value():
         api_key = settings.groq_api_key.get_secret_value()
         transcriber = GroqWhisperTranscriber(
@@ -108,6 +122,7 @@ def create_processors(
                 api_key, settings.groq_model,
                 cookie_file=settings.youtube_cookie_file,
                 download_options=options, transcriber=transcriber,
+                metadata_cache=metadata_cache,
             ),
             create_groq_file_processor(
                 api_key, settings.groq_model, transcriber=transcriber,
@@ -127,6 +142,7 @@ def create_processors(
             compute_type=settings.whisper_compute_type,
             cookie_file=settings.youtube_cookie_file,
             download_options=options, transcriber=local_transcriber,
+            metadata_cache=metadata_cache,
         ),
         create_local_file_processor(
             settings.model_path,

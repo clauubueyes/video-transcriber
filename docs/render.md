@@ -77,17 +77,22 @@ panel; no depende de que Render vuelva a importar `render.yaml`:
 ```env
 VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS=mweb,tv,web_safari
 VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME=/opt/bgutil/server
+VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_POLICY=always
 ```
 
 Si ya existen estas variables en Render, sus valores prevalecen sobre Docker.
 Mantén el archivo de cookies que ya has configurado. No hace falta copiar tokens
 manualmente: son temporales y el proveedor los genera cuando se necesitan.
+La política `always` solicita también tokens para las llamadas iniciales al
+player; `auto` puede omitirlos hasta encontrar una operación que los requiera.
 
 Al pegar una URL, los logs pueden mostrar:
 
 - `youtube_po_token_requested`: se ha solicitado generar un token; comprueba
   también que la consulta o descarga posterior termina correctamente. El evento
   por sí solo no confirma que se haya generado ni aceptado.
+  El contexto `player` identifica consultas de formatos, `gvs` la descarga y
+  `subs` los subtítulos.
 - `youtube_provider_warning` / `youtube_provider_error`: avisos del extractor,
   incluidos fallos del proveedor o de EJS. No se registran valores de los tokens
   ni credenciales del proxy.

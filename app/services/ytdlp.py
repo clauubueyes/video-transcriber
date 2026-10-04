@@ -31,8 +31,13 @@ class _ProviderLogger:
     def debug(self, message: str) -> None:
         # yt-dlp también envía mensajes informativos a debug(). No registrar
         # trazas detalladas, identificadores de sesión ni valores de los tokens.
-        if "Generating a " in message and " PO Token " in message:
-            logger.info("youtube_po_token_requested")
+        match = re.search(
+            r"Generating a (gvs|player|subs) PO Token for ([a-z_]+) client", message,
+        )
+        if match:
+            logger.info(
+                "youtube_po_token_requested: context=%s client=%s", *match.groups(),
+            )
 
     def warning(self, message: str) -> None:
         logger.warning("youtube_provider_warning: %s", _redact(message, self._proxy))
@@ -53,6 +58,9 @@ def youtube_download_options(settings: Settings) -> dict[str, Any]:
         if clients:
             extractor_args["youtube"] = {"player_client": clients}
     if settings.youtube_po_token_server_home:
+        extractor_args.setdefault("youtube", {})["fetch_pot"] = [
+            settings.youtube_po_token_policy,
+        ]
         extractor_args["youtubepot-bgutilscript"] = {
             "server_home": [str(settings.youtube_po_token_server_home)],
         }

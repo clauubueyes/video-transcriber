@@ -121,6 +121,7 @@ def test_provider_logging_redacts_proxy_and_reports_token_request(tmp_path, capl
     settings = Settings(
         token="test", _env_file=None, youtube_player_clients=" mweb, tv,web_safari ",
         youtube_po_token_server_home=tmp_path, youtube_proxy_url=proxy,
+        youtube_po_token_policy="always",
     )
     options = youtube_download_options(settings)
 
@@ -131,6 +132,7 @@ def test_provider_logging_redacts_proxy_and_reports_token_request(tmp_path, capl
     assert options["extractor_args"]["youtubepot-bgutilscript"] == {
         "server_home": [str(tmp_path)],
     }
+    assert options["extractor_args"]["youtube"]["fetch_pot"] == ["always"]
     options["logger"].warning(f"Proxy failed: {proxy}")
     options["logger"].error("Failed: https://other:another-secret@proxy.example")
     options["logger"].debug(

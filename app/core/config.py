@@ -2,6 +2,7 @@
 
 from functools import cached_property
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -46,6 +47,7 @@ class Settings(BaseSettings):
     youtube_po_token_server_home: Path | None = None
     youtube_proxy_url: SecretStr | None = None
     youtube_impersonate: str | None = None
+    youtube_po_token_policy: Literal["auto", "always", "never"] = "auto"
 
     @cached_property
     def allowed_domain_set(self) -> frozenset[str]:

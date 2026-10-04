@@ -81,7 +81,21 @@
     .file-dropzone input:disabled { cursor: not-allowed; }
     .file-name { color: var(--accent); font-weight: 500; font-size: 12px; overflow-wrap: anywhere; margin-top: 8px; }
     .status-box { display: none; margin-top: 20px; padding: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--input); font-size: 12px; overflow-wrap: anywhere; }
-    .status-box.active { display: block; }
+    .status-box.active { display: flex; align-items: center; gap: 12px; }
+    .status-animation { display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: 27px; height: 24px; flex-shrink: 0; color: var(--accent); }
+    .status-animation span { width: 3px; height: 12px; border-radius: 2px; background: currentColor; transform: scaleY(.35); }
+    .status-animation span:nth-child(2), .status-animation span:nth-child(4) { height: 18px; }
+    .status-animation span:nth-child(3) { height: 24px; }
+    .status-box.is-processing .status-animation span { animation: transcribing-wave 1.1s ease-in-out infinite; }
+    .status-box.is-processing .status-animation span:nth-child(2) { animation-delay: -.85s; }
+    .status-box.is-processing .status-animation span:nth-child(3) { animation-delay: -.6s; }
+    .status-box.is-processing .status-animation span:nth-child(4) { animation-delay: -.35s; }
+    .status-box.is-processing .status-animation span:nth-child(5) { animation-delay: -.1s; }
+    #status-text { min-width: 0; }
+    @keyframes transcribing-wave {
+      0%, 100% { transform: scaleY(.35); }
+      50% { transform: scaleY(1); }
+    }
     .status-box[data-type="error"] { color: var(--error); background: #352321; border-color: #67403b; }
     .status-box[data-type="success"] { color: var(--accent); background: var(--soft-accent); border-color: #3d6155; }
     .result-section { display: flex; flex-direction: column; }
@@ -124,7 +138,10 @@
       .card { padding: 16px; }
       .tab-btn { padding-inline: 6px; gap: 6px; font-size: 12px; }
     }
-    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+      .status-animation span { transform: none; }
+    }
   </style>
 </head>
 <body>
@@ -197,7 +214,12 @@
           </div>
         </form>
 
-        <div class="status-box" id="status-box" role="status" aria-live="polite" aria-atomic="true"></div>
+        <div class="status-box" id="status-box" role="status" aria-live="polite" aria-atomic="true">
+          <span class="status-animation" id="status-animation" aria-hidden="true" hidden>
+            <span></span><span></span><span></span><span></span><span></span>
+          </span>
+          <span id="status-text"></span>
+        </div>
 
       </section>
 
@@ -288,9 +310,14 @@
 
     function showStatus(msg, type = 'info') {
       const box = $('status-box');
-      box.textContent = msg;
+      $('status-text').textContent = msg;
       box.dataset.type = type;
       box.classList.add('active');
+    }
+
+    function setProcessing(active) {
+      $('status-animation').hidden = !active;
+      $('status-box').classList.toggle('is-processing', active);
     }
 
     function formatSRT(segments) {
@@ -325,6 +352,7 @@
       e.preventDefault();
       const submitBtn = $('submit-btn');
       submitBtn.disabled = true;
+      setProcessing(true);
       $('transcribe-form').setAttribute('aria-busy', 'true');
       $('submit-label').textContent = 'Transcribiendo…';
       for (const id of ['tab-url', 'tab-file', 'url-input', 'file-input', 'lang-select']) $(id).disabled = true;
@@ -372,6 +400,7 @@
       } catch (err) {
         showStatus(err.message, 'error');
       } finally {
+        setProcessing(false);
         submitBtn.disabled = false;
         $('result-section').setAttribute('aria-busy', 'false');
         $('transcribe-form').setAttribute('aria-busy', 'false');

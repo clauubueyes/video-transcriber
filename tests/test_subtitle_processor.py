@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from yt_dlp.utils import DownloadError
 
-from app.models.transcriptions import Segment
+from app.models.transcriptions import Chapter, Segment
 from app.services.subtitle_processor import SubtitleFirstProcessor
 from app.workers.job_worker import TranscriptionResult
 
@@ -97,4 +97,48 @@ def test_unexpected_subtitle_failure_is_not_hidden():
         SubtitleFirstProcessor(BrokenSubtitles(), fallback).process(
             "https://www.youtube.com/watch?v=abc", "es",
         )
+    assert fallback.calls == 0
+
+
+@pytest.mark.parametrize("subtitles", [True, False])
+def test_chapters_are_captured_before_processing_even_if_cache_expires(subtitles):
+    from app.services.chapters import YtDlpChapterFetcher
+    from app.services.youtube_metadata import YoutubeMetadataCache
+
+    now = 0
+    cache = YoutubeMetadataCache(ttl_seconds=1, clock=lambda: now)
+    cache.put("url", {
+        "id": "abc", "formats": [{"format_id": "audio"}], "duration": 10,
+        "chapters": [{"start_time": 0, "end_time": 10, "title": "Introducción"}],
+    })
+
+    class ExpiringFetcher:
+        def fetch(self, *args):
+            nonlocal now
+            now = 2
+            if subtitles:
+                return SubtitleFetcherWithContent().fetch(*args)
+            return None
+
+    processor = SubtitleFirstProcessor(
+        ExpiringFetcher(), RecordingFallback(),
+        chapter_fetcher=YtDlpChapterFetcher(metadata_cache=cache),
+    )
+    result = processor.process("url", "es")
+    assert result.chapters == [Chapter(start=0, end=10, title="Introducción")]
+    assert cache.get("url") is None
+
+
+def test_chapter_extraction_failure_still_returns_transcription():
+    class UnavailableChapters:
+        def fetch(self, source_url):
+            raise DownloadError("No hay metadatos disponibles")
+
+    fallback = RecordingFallback()
+    result = SubtitleFirstProcessor(
+        SubtitleFetcherWithContent(), fallback,
+        chapter_fetcher=UnavailableChapters(),
+    ).process("url", "es")
+    assert result.text == "Hola"
+    assert result.chapters == []
     assert fallback.calls == 0

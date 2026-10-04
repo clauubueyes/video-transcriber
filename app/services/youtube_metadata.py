@@ -57,7 +57,7 @@ class YoutubeMetadataCache:
             return
         compact = {
             key: value for key, value in metadata.items()
-            if key not in {"comments", "description", "thumbnails", "chapters",
+            if key not in {"comments", "description", "thumbnails",
                            "heatmap", "tags", "categories"}
         }
         try:

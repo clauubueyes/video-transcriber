@@ -6,6 +6,7 @@ from typing import Any
 from app.core.config import Settings
 from app.services.audio import YtDlpAudioFetcher
 from app.services.audio_processor import AudioTranscriber, AudioWhisperProcessor
+from app.services.chapters import YtDlpChapterFetcher
 from app.services.file_processor import LocalFileProcessor
 from app.services.groq_whisper import GroqWhisperTranscriber
 from app.services.subtitle_processor import SubtitleFirstProcessor
@@ -27,6 +28,7 @@ def create_local_processor(
     metadata_cache: YoutubeMetadataCache | None = None,
 ) -> TranscriptionProcessor:
     """Crea el flujo VTT → audio → Whisper usando recursos de la máquina local."""
+    metadata_cache = metadata_cache or YoutubeMetadataCache()
     audio_processor = AudioWhisperProcessor(
         YtDlpAudioFetcher(
             cookie_file=cookie_file, download_options=download_options,
@@ -44,6 +46,10 @@ def create_local_processor(
             metadata_cache=metadata_cache,
         ),
         audio_processor,
+        chapter_fetcher=YtDlpChapterFetcher(
+            metadata_cache=metadata_cache, cookie_file=cookie_file,
+            download_options=download_options,
+        ),
     )
 
 
@@ -74,6 +80,7 @@ def create_groq_processor(
     metadata_cache: YoutubeMetadataCache | None = None,
 ) -> TranscriptionProcessor:
     """Crea el flujo VTT → audio → Groq API sin cargar un modelo local."""
+    metadata_cache = metadata_cache or YoutubeMetadataCache()
     audio_processor = AudioWhisperProcessor(
         YtDlpAudioFetcher(
             cookie_file=cookie_file, download_options=download_options,
@@ -87,6 +94,10 @@ def create_groq_processor(
             metadata_cache=metadata_cache,
         ),
         audio_processor,
+        chapter_fetcher=YtDlpChapterFetcher(
+            metadata_cache=metadata_cache, cookie_file=cookie_file,
+            download_options=download_options,
+        ),
     )
 
 

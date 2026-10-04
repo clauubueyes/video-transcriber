@@ -52,6 +52,17 @@ Después abre:
 La interfaz web pública no solicita token. Las rutas bajo
 `/v1/transcriptions` sí requieren `Authorization: Bearer <token>`.
 
+La transcripción se muestra en párrafos. En el resultado puedes elegir texto
+continuo o fragmentos, mostrar u ocultar las marcas de tiempo y agrupar el texto
+por los capítulos de YouTube cuando el vídeo los incluya. El índice permite
+saltar a cada sección. Los tiempos corresponden a los fragmentos del audio y
+son aproximados; no se inventan capítulos si el vídeo no los tiene.
+
+Copiar y descargar `.txt` conservan el formato elegido. La descarga `.srt`
+utiliza los segmentos originales, independientemente del formato de lectura.
+La API devuelve los capítulos disponibles en `chapters`, con `title`, `start`
+y `end` en segundos.
+
 ## Configuración
 
 `.env.example` contiene todos los valores disponibles. Los más habituales son:
@@ -177,6 +188,7 @@ Ejecuta las comprobaciones antes de abrir un cambio:
 ```powershell
 .\.venv\Scripts\python.exe -m ruff check app tests
 .\.venv\Scripts\python.exe -m pytest -q
+node --test tests/web_transcript.test.cjs
 ```
 
 La guía ampliada de comportamiento local está en

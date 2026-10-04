@@ -110,7 +110,24 @@
     .result-empty > svg { width: 40px; height: 40px; margin-bottom: 20px; color: #869198; }
     .result-empty strong { font-size: 14px; font-weight: 500; }
     .result-empty p { margin: 8px 0 0; max-width: 275px; color: var(--muted); font-size: 13px; }
-    .transcript-output { margin-top: 20px; flex: 1; border-radius: 5px; background: var(--input); padding: 18px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.85; }
+    .result-controls { margin-top: 20px; }
+    .result-controls select { min-height: 44px; font-size: 13px; }
+    .result-toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; }
+    .check-label { display: inline-flex; align-items: center; gap: 8px; margin: 0; min-height: 32px; cursor: pointer; }
+    .check-label input { margin: 0; width: 16px; height: 16px; accent-color: var(--accent); }
+    .check-label:has(input:disabled) { color: var(--muted); cursor: default; }
+    .chapter-index { margin-top: 16px; }
+    .chapter-index summary { color: var(--accent); cursor: pointer; font-size: 13px; }
+    .chapter-index ol { margin: 8px 0 0; padding-left: 22px; max-height: 180px; overflow-y: auto; }
+    .chapter-index a { color: var(--ink); font-size: 12px; text-decoration: none; display: block; padding: 6px 0; overflow-wrap: anywhere; }
+    .chapter-index a:hover { text-decoration: underline; }
+    .transcript-output { margin-top: 20px; flex: 1; border-radius: 5px; background: var(--input); padding: 20px; max-height: 580px; overflow-y: auto; overflow-wrap: anywhere; font-size: 15px; line-height: 1.9; }
+    .transcript-section + .transcript-section { border-top: 1px solid var(--line); padding-top: 20px; margin-top: 24px; }
+    .transcript-section h3 { margin: 0 0 16px; font-size: 16px; line-height: 1.5; font-weight: 600; }
+    .transcript-paragraph { margin: 0 0 18px; }
+    .transcript-paragraph:last-child { margin-bottom: 0; }
+    .timestamp { display: inline-block; color: var(--accent); font-family: ui-monospace, "Cascadia Code", monospace; font-size: 12px; font-variant-numeric: tabular-nums; margin-right: 8px; white-space: nowrap; }
+    .transcript-section h3 .timestamp { display: block; margin-bottom: 4px; }
     .workspace-note { color: var(--muted); font-size: 12px; margin: 18px 0 0; }
     .site-footer { border-top: 1px solid var(--line); }
     .footer-inner { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-block: 20px; color: var(--muted); font-size: 12px; }
@@ -238,7 +255,25 @@
         <div class="result-empty" id="result-empty">
           <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4h14l7 7v24a1 1 0 0 1-1 1H10a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M24 4v8h7M15 19h10M15 25h10M15 31h6"/></svg>
           <strong>La transcripción aparecerá aquí</strong>
-          <p>Cuando esté lista, podrás copiar el texto o descargarlo en formato .txt y .srt.</p>
+          <p>Podrás leerla en párrafos, mostrar los minutos y consultar los capítulos de YouTube si están disponibles.</p>
+        </div>
+        <div class="result-controls" id="result-controls" hidden>
+          <label for="format-select">Formato de lectura</label>
+          <select id="format-select" aria-describedby="format-hint">
+            <option value="paragraphs">Párrafos</option>
+            <option value="segments">Fragmentos del audio</option>
+            <option value="continuous">Texto continuo</option>
+          </select>
+          <div class="result-toggles">
+            <label class="check-label" for="show-timestamps"><input type="checkbox" id="show-timestamps" aria-describedby="format-hint" checked>Mostrar marcas de tiempo</label>
+            <label class="check-label" for="show-chapters"><input type="checkbox" id="show-chapters" aria-describedby="chapters-hint" checked>Agrupar por capítulos de YouTube</label>
+          </div>
+          <p class="field-hint" id="format-hint" role="status"></p>
+          <p class="field-hint" id="chapters-hint"></p>
+          <details class="chapter-index" id="chapter-index" hidden>
+            <summary>Índice de capítulos</summary>
+            <ol id="chapter-list"></ol>
+          </details>
         </div>
         <div class="transcript-output" id="transcript-output" hidden tabindex="0" role="region" aria-label="Texto transcrito"></div>
       </section>
@@ -259,6 +294,188 @@
     let activeTab = 'url';
     let selectedFile = null;
     let currentJobResult = null;
+    let formattedTranscript = '';
+
+    function formatTimestamp(seconds) {
+      const total = Math.floor(Math.max(0, seconds));
+      const pad = number => String(number).padStart(2, '0');
+      const minutes = Math.floor(total / 60) % 60;
+      const time = `${pad(minutes)}:${pad(total % 60)}`;
+      return total >= 3600 ? `${pad(Math.floor(total / 3600))}:${time}` : time;
+    }
+
+    function normalizeText(text) {
+      return (text || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function splitReadableText(text) {
+      const paragraphs = [];
+      for (const block of (text || '').split(/\n\s*\n/)) {
+        const sentences = normalizeText(block).split(/(?<=[.!?。！？])\s+/u);
+        let paragraph = '';
+        for (const sentence of sentences) {
+          const words = sentence.split(/\s+/).filter(Boolean);
+          for (let index = 0; index < words.length; index += 100) {
+            const piece = words.slice(index, index + 100).join(' ');
+            if (paragraph && paragraph.length + piece.length > 650) {
+              paragraphs.push(paragraph);
+              paragraph = '';
+            }
+            paragraph = paragraph ? `${paragraph} ${piece}` : piece;
+          }
+        }
+        if (paragraph) paragraphs.push(paragraph);
+      }
+      return paragraphs;
+    }
+
+    function buildParagraphs(segments, mode, text = '') {
+      if (!segments.length) {
+        return (mode === 'continuous' ? [normalizeText(text)] : splitReadableText(text))
+          .filter(Boolean).map(text => ({ start: null, text }));
+      }
+      if (mode === 'segments') {
+        return segments.map(segment => ({ start: segment.start, text: normalizeText(segment.text) }));
+      }
+      if (mode === 'continuous') {
+        return [{ start: segments[0].start, text: segments.map(segment => normalizeText(segment.text)).join(' ') }];
+      }
+      const paragraphs = [];
+      let current = null;
+      let previousEnd = 0;
+      for (const segment of segments) {
+        if (current && (
+          segment.start - previousEnd >= 2.5 || current.text.length >= 650 ||
+          ((current.text.length >= 350 || segment.start - current.start >= 45) && /[.!?。！？]["'»”)]*$/.test(current.text))
+        )) {
+          paragraphs.push(current);
+          current = null;
+        }
+        const text = normalizeText(segment.text);
+        current = current ? { start: current.start, text: `${current.text} ${text}` } : { start: segment.start, text };
+        previousEnd = segment.end;
+      }
+      if (current) paragraphs.push(current);
+      return paragraphs.flatMap(paragraph => splitReadableText(paragraph.text)
+        .map(text => ({ start: paragraph.start, text })));
+    }
+
+    function buildTranscriptSections(job, options) {
+      const segments = [...(job.segments || [])].sort((a, b) => a.start - b.start);
+      const chapters = options.chapters && segments.length
+        ? [...(job.chapters || [])].sort((a, b) => a.start - b.start) : [];
+      if (!chapters.length) {
+        return [{ title: null, start: null, end: null,
+          paragraphs: buildParagraphs(segments, options.mode, job.text) }];
+      }
+      const sections = chapters.map(chapter => ({ ...chapter, segments: [] }));
+      // Cada fragmento se asigna una sola vez, según su tiempo de inicio.
+      let chapterIndex = 0;
+      let uncovered = null;
+      for (const segment of segments) {
+        while (chapterIndex < chapters.length && chapters[chapterIndex].end <= segment.start) chapterIndex++;
+        const chapter = chapters[chapterIndex];
+        if (chapter && segment.start >= chapter.start && segment.start < chapter.end) {
+          sections[chapterIndex].segments.push(segment);
+          uncovered = null;
+        } else {
+          if (!uncovered) {
+            uncovered = { title: 'Sin capítulo', start: segment.start, end: segment.end, segments: [] };
+            sections.push(uncovered);
+          }
+          uncovered.segments.push(segment);
+          uncovered.end = Math.max(uncovered.end, segment.end);
+        }
+      }
+      return sections.sort((a, b) => a.start - b.start).map(section => ({
+        title: section.title, start: section.start, end: section.end,
+        paragraphs: buildParagraphs(section.segments, options.mode)
+      }));
+    }
+
+    function transcriptAsText(sections, timestamps) {
+      return sections.map(section => {
+        const blocks = [];
+        if (section.title) {
+          const range = timestamps ? `[${formatTimestamp(section.start)} – ${formatTimestamp(section.end)}] ` : '';
+          blocks.push(range + section.title);
+        }
+        for (const paragraph of section.paragraphs) {
+          const time = timestamps && paragraph.start !== null ? `[${formatTimestamp(paragraph.start)}] ` : '';
+          blocks.push(time + paragraph.text);
+        }
+        return blocks.join('\n\n');
+      }).join('\n\n');
+    }
+
+    function renderTranscript() {
+      if (!currentJobResult) return;
+      const hasSegments = Boolean(currentJobResult.segments?.length);
+      const hasChapters = Boolean(currentJobResult.chapters?.length);
+      $('show-timestamps').disabled = !hasSegments;
+      $('show-chapters').disabled = !hasChapters || !hasSegments;
+      $('format-select').querySelector('option[value="segments"]').disabled = !hasSegments;
+      if (!hasSegments && $('format-select').value === 'segments') $('format-select').value = 'paragraphs';
+      const options = {
+        mode: $('format-select').value,
+        timestamps: hasSegments && $('show-timestamps').checked,
+        chapters: hasSegments && hasChapters && $('show-chapters').checked
+      };
+      $('format-hint').textContent = hasSegments
+        ? 'Las marcas indican el inicio del fragmento de audio; los tiempos son aproximados.'
+        : 'Esta transcripción no incluye marcas de tiempo. Puedes leerla en párrafos o como texto continuo.';
+      $('chapters-hint').textContent = hasChapters
+        ? (hasSegments ? `${currentJobResult.chapters.length} capítulos disponibles en YouTube.` : 'No se pueden asociar los capítulos al texto sin marcas de tiempo.')
+        : 'No hay capítulos disponibles para este contenido.';
+      const sections = buildTranscriptSections(currentJobResult, options);
+      formattedTranscript = transcriptAsText(sections, options.timestamps);
+      const output = $('transcript-output');
+      output.replaceChildren();
+      $('chapter-list').replaceChildren();
+      $('chapter-index').hidden = !options.chapters;
+      const appendTimestamp = (parent, text) => {
+        const time = document.createElement('span');
+        time.className = 'timestamp';
+        time.textContent = text;
+        parent.appendChild(time);
+      };
+      sections.forEach((section, index) => {
+        const container = document.createElement('section');
+        container.className = 'transcript-section';
+        if (section.title) {
+          const heading = document.createElement('h3');
+          heading.id = `transcript-chapter-${index}`;
+          heading.tabIndex = -1;
+          if (options.timestamps) appendTimestamp(heading, `${formatTimestamp(section.start)} – ${formatTimestamp(section.end)}`);
+          heading.appendChild(document.createTextNode(section.title));
+          container.appendChild(heading);
+          const item = document.createElement('li');
+          const link = document.createElement('a');
+          link.href = `#${heading.id}`;
+          link.textContent = `${options.timestamps ? formatTimestamp(section.start) + ' · ' : ''}${section.title}`;
+          link.addEventListener('click', event => {
+            event.preventDefault();
+            heading.scrollIntoView({ block: 'nearest' });
+            heading.focus({ preventScroll: true });
+          });
+          item.appendChild(link);
+          $('chapter-list').appendChild(item);
+        }
+        for (const paragraph of section.paragraphs) {
+          const element = document.createElement('p');
+          element.className = 'transcript-paragraph';
+          if (options.timestamps && paragraph.start !== null) appendTimestamp(element, formatTimestamp(paragraph.start));
+          element.appendChild(document.createTextNode(paragraph.text));
+          container.appendChild(element);
+        }
+        output.appendChild(container);
+      });
+      output.scrollTop = 0;
+    }
+
+    for (const id of ['format-select', 'show-timestamps', 'show-chapters']) {
+      $(id).addEventListener('change', renderTranscript);
+    }
 
     function selectTab(tab) {
       activeTab = tab;
@@ -357,10 +574,12 @@
       $('submit-label').textContent = 'Transcribiendo…';
       for (const id of ['tab-url', 'tab-file', 'url-input', 'file-input', 'lang-select']) $(id).disabled = true;
       currentJobResult = null;
+      formattedTranscript = '';
       $('result-section').setAttribute('aria-busy', 'true');
       $('result-empty').hidden = false;
       $('transcript-output').hidden = true;
       $('transcript-output').textContent = '';
+      $('result-controls').hidden = true;
       $('result-meta').textContent = '';
       for (const id of ['btn-copy', 'btn-download-txt', 'btn-download-srt']) $(id).disabled = true;
 
@@ -420,13 +639,15 @@
         const job = await parseJSONResponse(resp);
         if (job.status === 'completed') {
           currentJobResult = job;
-          $('transcript-output').textContent = job.text || '';
+          renderTranscript();
+          $('result-controls').hidden = false;
           $('result-empty').hidden = true;
           $('transcript-output').hidden = false;
           $('btn-copy').disabled = false;
           $('btn-download-txt').disabled = false;
           const words = (job.text || '').trim().split(/\s+/).filter(Boolean).length;
-          $('result-meta').textContent = words + (words === 1 ? ' palabra' : ' palabras');
+          const duration = job.durationSeconds != null ? ` · ${formatTimestamp(job.durationSeconds)}` : '';
+          $('result-meta').textContent = words + (words === 1 ? ' palabra' : ' palabras') + duration;
           const hasSegments = Boolean(job.segments && job.segments.length);
           $('btn-download-srt').disabled = !hasSegments;
           $('btn-download-srt').title = hasSegments ? '' : 'Esta transcripción no incluye tiempos para generar subtítulos.';
@@ -441,7 +662,7 @@
 
     $('btn-copy').addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText($('transcript-output').textContent);
+        await navigator.clipboard.writeText(formattedTranscript);
         showStatus('Texto copiado al portapapeles.', 'success');
       } catch {
         showStatus('No se pudo copiar. Puedes seleccionar el texto o descargar el archivo .txt.', 'error');
@@ -461,7 +682,7 @@
     }
 
     $('btn-download-txt').addEventListener('click', () => {
-      downloadText($('transcript-output').textContent, 'transcripcion.txt');
+      downloadText(formattedTranscript, 'transcripcion.txt');
     });
 
     $('btn-download-srt').addEventListener('click', () => {

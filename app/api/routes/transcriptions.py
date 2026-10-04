@@ -340,6 +340,7 @@ def _to_response(job: StoredJob) -> TranscriptionJobResponse:
         duration_seconds=job.duration_seconds,
         text=job.text,
         segments=job.segments,
+        chapters=job.chapters,
         expires_at=job.expires_at,
         error_message=job.error_message,
     )

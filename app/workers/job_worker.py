@@ -1,13 +1,13 @@
 """Orquestación local del ciclo de vida de un trabajo."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import monotonic
 from typing import Protocol
 
-from app.models.transcriptions import JobStatus, Segment, SourceType
+from app.models.transcriptions import Chapter, JobStatus, Segment, SourceType
 from app.storage.jobs import SqliteJobStore, StoredJob
 
 logger = logging.getLogger("video_transcriber.worker")
@@ -21,6 +21,7 @@ class TranscriptionResult:
     duration_seconds: float
     text: str
     segments: list[Segment]
+    chapters: list[Chapter] = field(default_factory=list)
 
 
 class TranscriptionProcessor(Protocol):
@@ -86,6 +87,7 @@ class JobWorker:
                 duration_seconds=result.duration_seconds,
                 text=result.text,
                 segments=result.segments,
+                chapters=result.chapters,
                 expires_at=datetime.now(UTC)
                 + timedelta(seconds=self._result_ttl_seconds),
             )

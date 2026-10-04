@@ -8,7 +8,7 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
-from app.models.transcriptions import JobStatus, Segment, SourceType
+from app.models.transcriptions import Chapter, JobStatus, Segment, SourceType
 
 
 class InvalidJobTransitionError(ValueError):
@@ -33,6 +33,7 @@ class StoredJob:
     text: str | None
     segments: list[Segment] | None
     expires_at: datetime | None
+    chapters: list[Chapter] | None = None
 
 
 @dataclass(frozen=True)
@@ -256,7 +257,8 @@ class SqliteJobStore:
                 UPDATE transcription_jobs
                 SET
                     status = ?, duration_seconds = NULL, transcript_text = NULL,
-                    segments_json = NULL, expires_at = NULL, updated_at = ?
+                    segments_json = NULL, chapters_json = NULL,
+                    expires_at = NULL, updated_at = ?
                 WHERE status = ? AND expires_at IS NOT NULL AND expires_at <= ?
                 """,
                 (
@@ -301,6 +303,7 @@ class SqliteJobStore:
         text: str,
         segments: list[Segment],
         expires_at: datetime,
+        chapters: list[Chapter] | None = None,
     ) -> StoredJob | None:
         """Guarda el resultado temporal y completa un trabajo en transcripción."""
         with self._lock, self._connection:
@@ -316,7 +319,8 @@ class SqliteJobStore:
                 UPDATE transcription_jobs
                 SET
                     status = ?, language = ?, duration_seconds = ?, transcript_text = ?,
-                    segments_json = ?, expires_at = ?, updated_at = ?,
+                    segments_json = ?, chapters_json = ?, expires_at = ?,
+                    updated_at = ?,
                     error_message = NULL
                 WHERE id = ?
                 """,
@@ -326,6 +330,8 @@ class SqliteJobStore:
                     duration_seconds,
                     text,
                     dumps([segment.model_dump() for segment in segments]),
+                    dumps([chapter.model_dump() for chapter in chapters])
+                    if chapters is not None else None,
                     expires_at.isoformat(),
                     datetime.now(UTC).isoformat(),
                     job_id,
@@ -353,6 +359,7 @@ class SqliteJobStore:
                     duration_seconds REAL,
                     transcript_text TEXT,
                     segments_json TEXT,
+                    chapters_json TEXT,
                     expires_at TEXT
                 )
                 """
@@ -369,6 +376,7 @@ class SqliteJobStore:
             "duration_seconds": "REAL",
             "transcript_text": "TEXT",
             "segments_json": "TEXT",
+            "chapters_json": "TEXT",
             "expires_at": "TEXT",
         }
         with self._connection:
@@ -438,5 +446,10 @@ class SqliteJobStore:
                 datetime.fromisoformat(row["expires_at"])
                 if row["expires_at"]
                 else None
+            ),
+            chapters=(
+                [Chapter.model_validate(chapter)
+                 for chapter in loads(row["chapters_json"])]
+                if row["chapters_json"] else None
             ),
         )

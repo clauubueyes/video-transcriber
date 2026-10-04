@@ -53,6 +53,20 @@ class Segment(BaseModel):
         return end
 
 
+class Chapter(BaseModel):
+    start: float = Field(ge=0, allow_inf_nan=False)
+    end: float = Field(gt=0, allow_inf_nan=False)
+    title: str = Field(min_length=1)
+
+    @field_validator("end")
+    @classmethod
+    def ends_after_start(cls, end: float, info: object) -> float:
+        start = getattr(info, "data", {}).get("start")
+        if start is not None and end <= start:
+            raise ValueError("El final debe ser posterior al inicio.")
+        return end
+
+
 class TranscriptionJobResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -65,6 +79,7 @@ class TranscriptionJobResponse(BaseModel):
     )
     text: str | None = None
     segments: list[Segment] | None = None
+    chapters: list[Chapter] | None = None
     expires_at: datetime | None = Field(default=None, serialization_alias="expiresAt")
     error_message: str | None = Field(default=None, serialization_alias="errorMessage")
 

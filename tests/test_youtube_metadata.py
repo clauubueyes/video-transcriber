@@ -13,6 +13,10 @@ def video_metadata():
         "formats": [{"format_id": "audio", "url": "https://cdn.example/audio",
                      "ext": "m4a", "acodec": "aac", "vcodec": "none"}],
         "subtitles": {}, "automatic_captions": {},
+        "chapters": [
+            {"start_time": 0, "end_time": 30, "title": "Introducción"},
+            {"start_time": 30, "end_time": 60, "title": "Desarrollo"},
+        ],
     }
 
 
@@ -276,5 +280,16 @@ def test_api_validation_subtitles_and_audio_share_one_extraction(
     job = app.state.job_store.get(response.json()["id"])
     assert job.status.value == "completed"
     assert job.text == ("Subtítulo" if has_subtitles else "Audio")
+    assert [chapter.title for chapter in job.chapters] == [
+        "Introducción", "Desarrollo",
+    ]
+    result = TestClient(app).get(
+        f"/v1/transcriptions/{job.id}",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert result.json()["chapters"] == [
+        {"start": 0, "end": 30, "title": "Introducción"},
+        {"start": 30, "end": 60, "title": "Desarrollo"},
+    ]
     assert counts == {"extract": 1, "subtitles": int(has_subtitles),
                       "audio": int(not has_subtitles)}

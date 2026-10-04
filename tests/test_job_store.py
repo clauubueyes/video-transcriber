@@ -2,7 +2,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.models.transcriptions import Chapter, JobStatus, Segment, SourceType
+from app.models.transcriptions import (
+    Chapter,
+    JobStatus,
+    ProcessingMethod,
+    Segment,
+    SourceType,
+)
 from app.storage.jobs import (
     InvalidJobTransitionError,
     JobQueueFullError,
@@ -152,6 +158,8 @@ def test_store_persists_completed_transcription_result(store: SqliteJobStore) ->
         segments=[Segment(start=0, end=4.2, text="Hola mundo")],
         expires_at=expires_at,
         chapters=[Chapter(start=0, end=4.2, title="Introducción")],
+        processing_seconds=0.7,
+        processing_method=ProcessingMethod.WHISPER_LOCAL,
     )
 
     assert completed is not None
@@ -161,6 +169,9 @@ def test_store_persists_completed_transcription_result(store: SqliteJobStore) ->
     assert completed.expires_at == expires_at
     assert completed.chapters == [Chapter(start=0, end=4.2, title="Introducción")]
     assert store.get(job.id).chapters == completed.chapters
+    assert store.get(job.id).processing_seconds == 0.7
+    assert completed.processing_method == ProcessingMethod.WHISPER_LOCAL
+    assert completed.processing_speed == pytest.approx(6)
 
 
 def test_store_expires_and_clears_due_transcription_results(
@@ -177,6 +188,8 @@ def test_store_expires_and_clears_due_transcription_results(
         segments=[Segment(start=0, end=4.2, text="Hola mundo")],
         expires_at=datetime.now(UTC) - timedelta(seconds=1),
         chapters=[Chapter(start=0, end=4.2, title="Introducción")],
+        processing_seconds=1,
+        processing_method=ProcessingMethod.SUBTITLES,
     )
 
     expired_count = store.expire_due_results(datetime.now(UTC))
@@ -190,6 +203,10 @@ def test_store_expires_and_clears_due_transcription_results(
     assert expired.chapters is None
     assert expired.duration_seconds is None
     assert expired.expires_at is None
+    assert expired.processing_seconds is None
+    assert expired.processing_method is None
+    assert expired.processing_speed is None
+    assert store.metrics().performance_by_method == []
 
 
 def test_store_requeues_stale_active_jobs(store: SqliteJobStore) -> None:
@@ -242,7 +259,67 @@ def test_existing_database_migrates_without_losing_results(tmp_path):
         restored = store.get("trn_legacy")
         assert restored.text == "Hola"
         assert restored.chapters is None
+        assert restored.processing_seconds is None
+        assert restored.processing_method is None
+        assert restored.processing_speed is None
+        assert store.metrics().performance_by_method[0].measured_jobs == 0
         assert restored.segments == [Segment(start=0, end=1, text="Hola")]
         assert store.create("https://youtu.be/new", None).chapters is None
     finally:
         store.close()
+
+
+def _complete_measured_job(store, method, duration, seconds):
+    job = store.create("https://youtu.be/private-source", "es")
+    store.update_status(job.id, JobStatus.DOWNLOADING)
+    store.update_status(job.id, JobStatus.TRANSCRIBING)
+    return store.complete(
+        job.id, language="es", duration_seconds=duration,
+        text="Texto privado", segments=[],
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        processing_seconds=seconds, processing_method=method,
+    )
+
+
+def test_performance_metrics_separate_methods_and_use_weighted_speed(store):
+    _complete_measured_job(store, ProcessingMethod.WHISPER_LOCAL, 100, 10)
+    _complete_measured_job(store, ProcessingMethod.WHISPER_LOCAL, 100, 90)
+    _complete_measured_job(store, ProcessingMethod.WHISPER_LOCAL, 500, None)
+    _complete_measured_job(store, ProcessingMethod.SUBTITLES, 100, 1)
+    _complete_measured_job(store, ProcessingMethod.GROQ, 100, 20)
+
+    metrics = {item.method: item for item in store.metrics().performance_by_method}
+
+    local = metrics[ProcessingMethod.WHISPER_LOCAL]
+    assert local.completed_jobs == 3
+    assert local.measured_jobs == 2
+    assert local.average_processing_seconds == 50
+    assert local.processing_speed == 2
+    assert metrics[ProcessingMethod.SUBTITLES].processing_speed == 100
+    assert metrics[ProcessingMethod.GROQ].processing_speed == 5
+
+
+@pytest.mark.parametrize("duration, seconds", [(0, 1), (1, 0), (1, None)])
+def test_unmeasurable_processing_speed_is_null(store, duration, seconds):
+    job = _complete_measured_job(store, ProcessingMethod.WHISPER_LOCAL,
+                                 duration, seconds)
+
+    assert job.processing_speed is None
+    assert store.metrics().performance_by_method[0].processing_speed is None
+
+
+def test_performance_survives_database_reopen(tmp_path):
+    database = tmp_path / "persistent.sqlite3"
+    store = SqliteJobStore(database)
+    try:
+        job = _complete_measured_job(store, ProcessingMethod.GROQ, 120, 2)
+    finally:
+        store.close()
+    reopened = SqliteJobStore(database)
+    try:
+        restored = reopened.get(job.id)
+        assert restored.processing_seconds == 2
+        assert restored.processing_method == ProcessingMethod.GROQ
+        assert restored.processing_speed == 60
+    finally:
+        reopened.close()

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.models.transcriptions import JobStatus, Segment, SourceType
+from app.models.transcriptions import JobStatus, ProcessingMethod, Segment, SourceType
 from app.storage.jobs import SqliteJobStore
 from app.workers.job_worker import JobWorker, TranscriptionResult
 
@@ -18,6 +18,7 @@ class SuccessfulProcessor:
             duration_seconds=2.5,
             text="Receta de prueba",
             segments=[Segment(start=0, end=2.5, text="Receta de prueba")],
+            processing_method=ProcessingMethod.WHISPER_LOCAL,
         )
 
 
@@ -46,7 +47,9 @@ class LocalFileProcessor:
         )
 
 
-def test_worker_completes_a_queued_job(tmp_path) -> None:
+def test_worker_completes_a_queued_job(tmp_path, monkeypatch) -> None:
+    times = iter([100.0, 100.25])
+    monkeypatch.setattr("app.workers.job_worker.monotonic", lambda: next(times))
     store = SqliteJobStore(tmp_path / "jobs.sqlite3")
     job = store.create("https://www.youtube.com/watch?v=abc", "es")
     worker = JobWorker(store, SuccessfulProcessor(), result_ttl_seconds=3600)
@@ -58,6 +61,9 @@ def test_worker_completes_a_queued_job(tmp_path) -> None:
     assert completed.status is JobStatus.COMPLETED
     assert completed.text == "Receta de prueba"
     assert completed.expires_at is not None
+    assert completed.processing_seconds == 0.25
+    assert completed.processing_method == ProcessingMethod.WHISPER_LOCAL
+    assert completed.processing_speed == 10
     store.close()
 
 
@@ -72,6 +78,8 @@ def test_worker_marks_failures_without_internal_error_details(tmp_path) -> None:
     assert failed.id == job.id
     assert failed.status is JobStatus.FAILED
     assert failed.error_message == "No se ha podido transcribir el vídeo."
+    assert failed.processing_seconds is None
+    assert failed.processing_speed is None
     store.close()
 
 

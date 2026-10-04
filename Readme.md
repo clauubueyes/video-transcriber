@@ -181,6 +181,13 @@ La interfaz puede alojarse en Vercel y conectarse a un backend HTTPS con disco
 persistente. Sigue [docs/vercel.md](docs/vercel.md) para configurar el proyecto,
 la URL del backend y CORS.
 
+## Métricas y pruebas locales
+
+Los resultados muestran el tiempo de procesamiento. La API protegida
+`/v1/transcriptions/metrics` incluye rendimiento separado por subtítulos,
+Whisper local y Groq. Para repetir pruebas con audio real y guardar un informe
+de tiempos y memoria, consulta [docs/metricas-locales.md](docs/metricas-locales.md).
+
 ## Desarrollo
 
 Ejecuta las comprobaciones antes de abrir un cambio:

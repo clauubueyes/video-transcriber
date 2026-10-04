@@ -647,7 +647,9 @@
           $('btn-download-txt').disabled = false;
           const words = (job.text || '').trim().split(/\s+/).filter(Boolean).length;
           const duration = job.durationSeconds != null ? ` · ${formatTimestamp(job.durationSeconds)}` : '';
-          $('result-meta').textContent = words + (words === 1 ? ' palabra' : ' palabras') + duration;
+          const processing = typeof job.processingSeconds === 'number' && Number.isFinite(job.processingSeconds) && job.processingSeconds >= 0
+            ? ` · Procesado en ${job.processingSeconds.toLocaleString('es-ES', { maximumFractionDigits: 1 })} s` : '';
+          $('result-meta').textContent = words + (words === 1 ? ' palabra' : ' palabras') + duration + processing;
           const hasSegments = Boolean(job.segments && job.segments.length);
           $('btn-download-srt').disabled = !hasSegments;
           $('btn-download-srt').title = hasSegments ? '' : 'Esta transcripción no incluye tiempos para generar subtítulos.';

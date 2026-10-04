@@ -77,6 +77,11 @@ antes y después, separando los resultados que aprovechan subtítulos de los que
 transcriben audio. Prueba primero un vídeo corto y luego uno de 45–60 minutos,
 observando también la memoria de Render y la disponibilidad de `/ready`.
 
+Los tiempos también se guardan en SQLite y los agregados de
+`/v1/transcriptions/metrics` separan subtítulos, Whisper local y Groq.
+La guía [metricas-locales.md](metricas-locales.md) incluye el comando
+`python -m app.benchmark` para medir archivos reales y guardar informes.
+
 ## Configuración
 
 Perfil para Render con Groq:

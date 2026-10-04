@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from yt_dlp.utils import DownloadError
 
-from app.models.transcriptions import Chapter, Segment
+from app.models.transcriptions import Chapter, ProcessingMethod, Segment
 from app.services.subtitle_processor import SubtitleFirstProcessor
 from app.workers.job_worker import TranscriptionResult
 
@@ -58,6 +58,7 @@ def test_processor_uses_available_subtitles_before_audio_fallback() -> None:
     result = processor.process("https://www.youtube.com/watch?v=abc", "es")
 
     assert result.text == "Hola"
+    assert result.processing_method == ProcessingMethod.SUBTITLES
     assert result.segments == [Segment(start=0, end=2, text="Hola")]
     assert fallback.calls == 0
 

@@ -8,7 +8,13 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
-from app.models.transcriptions import Chapter, JobStatus, Segment, SourceType
+from app.models.transcriptions import (
+    Chapter,
+    JobStatus,
+    ProcessingMethod,
+    Segment,
+    SourceType,
+)
 
 
 class InvalidJobTransitionError(ValueError):
@@ -34,6 +40,27 @@ class StoredJob:
     segments: list[Segment] | None
     expires_at: datetime | None
     chapters: list[Chapter] | None = None
+    processing_seconds: float | None = None
+    processing_method: ProcessingMethod | None = None
+
+    @property
+    def processing_speed(self) -> float | None:
+        """Segundos de audio por segundo de procesamiento, si son medibles."""
+        if (
+            self.duration_seconds is not None and self.duration_seconds > 0
+            and self.processing_seconds is not None and self.processing_seconds > 0
+        ):
+            return self.duration_seconds / self.processing_seconds
+        return None
+
+
+@dataclass(frozen=True)
+class MethodPerformance:
+    method: ProcessingMethod | None
+    completed_jobs: int
+    measured_jobs: int
+    average_processing_seconds: float | None
+    processing_speed: float | None
 
 
 @dataclass(frozen=True)
@@ -45,6 +72,7 @@ class JobMetrics:
     completed_jobs: int
     failed_jobs: int
     average_completed_duration_seconds: float | None
+    performance_by_method: list[MethodPerformance]
 
 
 _ALLOWED_TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
@@ -241,12 +269,40 @@ class SqliteJobStore:
                     JobStatus.COMPLETED.value,
                 ),
             ).fetchone()
+            performance_rows = self._connection.execute(
+                """
+                SELECT processing_method,
+                    COUNT(*) AS completed_jobs,
+                    COUNT(processing_seconds) AS measured_jobs,
+                    AVG(processing_seconds) AS average_processing_seconds,
+                    SUM(CASE WHEN processing_seconds > 0 AND duration_seconds > 0
+                        THEN duration_seconds END) /
+                    SUM(CASE WHEN processing_seconds > 0 AND duration_seconds > 0
+                        THEN processing_seconds END) AS processing_speed
+                FROM transcription_jobs
+                WHERE status = ?
+                GROUP BY processing_method
+                ORDER BY processing_method
+                """,
+                (JobStatus.COMPLETED.value,),
+            ).fetchall()
         return JobMetrics(
             queued_jobs=row["queued_jobs"] or 0,
             active_jobs=row["active_jobs"] or 0,
             completed_jobs=row["completed_jobs"] or 0,
             failed_jobs=row["failed_jobs"] or 0,
             average_completed_duration_seconds=row["average_duration"],
+            performance_by_method=[
+                MethodPerformance(
+                    method=ProcessingMethod(item["processing_method"])
+                    if item["processing_method"] is not None else None,
+                    completed_jobs=item["completed_jobs"],
+                    measured_jobs=item["measured_jobs"],
+                    average_processing_seconds=item["average_processing_seconds"],
+                    processing_speed=item["processing_speed"],
+                )
+                for item in performance_rows
+            ],
         )
 
     def expire_due_results(self, now: datetime) -> int:
@@ -258,6 +314,7 @@ class SqliteJobStore:
                 SET
                     status = ?, duration_seconds = NULL, transcript_text = NULL,
                     segments_json = NULL, chapters_json = NULL,
+                    processing_seconds = NULL, processing_method = NULL,
                     expires_at = NULL, updated_at = ?
                 WHERE status = ? AND expires_at IS NOT NULL AND expires_at <= ?
                 """,
@@ -304,6 +361,8 @@ class SqliteJobStore:
         segments: list[Segment],
         expires_at: datetime,
         chapters: list[Chapter] | None = None,
+        processing_seconds: float | None = None,
+        processing_method: ProcessingMethod | None = None,
     ) -> StoredJob | None:
         """Guarda el resultado temporal y completa un trabajo en transcripción."""
         with self._lock, self._connection:
@@ -321,6 +380,7 @@ class SqliteJobStore:
                     status = ?, language = ?, duration_seconds = ?, transcript_text = ?,
                     segments_json = ?, chapters_json = ?, expires_at = ?,
                     updated_at = ?,
+                    processing_seconds = ?, processing_method = ?,
                     error_message = NULL
                 WHERE id = ?
                 """,
@@ -334,6 +394,8 @@ class SqliteJobStore:
                     if chapters is not None else None,
                     expires_at.isoformat(),
                     datetime.now(UTC).isoformat(),
+                    processing_seconds,
+                    processing_method.value if processing_method is not None else None,
                     job_id,
                 ),
             )
@@ -378,6 +440,8 @@ class SqliteJobStore:
             "segments_json": "TEXT",
             "chapters_json": "TEXT",
             "expires_at": "TEXT",
+            "processing_seconds": "REAL",
+            "processing_method": "TEXT",
         }
         with self._connection:
             for name, column_type in required_columns.items():
@@ -452,4 +516,7 @@ class SqliteJobStore:
                  for chapter in loads(row["chapters_json"])]
                 if row["chapters_json"] else None
             ),
+            processing_seconds=row["processing_seconds"],
+            processing_method=ProcessingMethod(row["processing_method"])
+            if row["processing_method"] is not None else None,
         )

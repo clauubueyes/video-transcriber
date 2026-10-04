@@ -9,6 +9,8 @@ _SAFE_FIELDS = (
     "status",
     "duration_seconds",
     "processing_seconds",
+    "processing_method",
+    "processing_speed",
     "removed_uploads",
     "expired_results",
     "requeued_jobs",

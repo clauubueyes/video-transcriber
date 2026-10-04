@@ -12,7 +12,7 @@ from app.api.routes.transcriptions import (
 )
 from app.core.config import Settings
 from app.main import create_app
-from app.models.transcriptions import JobStatus, Segment
+from app.models.transcriptions import JobStatus, ProcessingMethod, Segment
 
 
 def client_with_settings(tmp_path) -> TestClient:
@@ -377,7 +377,45 @@ def test_get_transcription_metrics_returns_only_aggregates(tmp_path) -> None:
         "completedJobs": 0,
         "failedJobs": 0,
         "averageCompletedDurationSeconds": None,
+        "performanceByMethod": [],
     }
+
+
+def test_get_transcription_metrics_requires_authentication(tmp_path) -> None:
+    client = client_with_settings(tmp_path)
+
+    assert client.get("/v1/transcriptions/metrics").status_code == 401
+
+
+def test_api_exposes_persisted_performance_and_keeps_aggregates_private(tmp_path):
+    client = client_with_settings(tmp_path)
+    headers = {"Authorization": "Bearer test-token"}
+    store = client.app.state.job_store
+    job = store.create("https://youtu.be/private-source", "es")
+    store.update_status(job.id, JobStatus.DOWNLOADING)
+    store.update_status(job.id, JobStatus.TRANSCRIBING)
+    store.complete(
+        job.id, language="es", duration_seconds=120,
+        text="Private transcription", segments=[],
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        processing_seconds=2, processing_method=ProcessingMethod.GROQ,
+    )
+
+    response = client.get(f"/v1/transcriptions/{job.id}", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["processingSeconds"] == 2
+    assert response.json()["processingMethod"] == "groq"
+    assert response.json()["processingSpeed"] == 60
+
+    metrics = client.get("/v1/transcriptions/metrics", headers=headers)
+    assert metrics.status_code == 200
+    assert metrics.json()["performanceByMethod"] == [{
+        "method": "groq", "completedJobs": 1, "measuredJobs": 1,
+        "averageProcessingSeconds": 2, "processingSpeed": 60,
+    }]
+    assert "Private" not in metrics.text
+    assert "private-source" not in metrics.text
+    assert job.id not in metrics.text
 
 
 def test_get_transcription_returns_not_found_for_unknown_job(tmp_path) -> None:

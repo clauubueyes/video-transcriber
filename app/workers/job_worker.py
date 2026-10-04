@@ -7,7 +7,13 @@ from pathlib import Path
 from time import monotonic
 from typing import Protocol
 
-from app.models.transcriptions import Chapter, JobStatus, Segment, SourceType
+from app.models.transcriptions import (
+    Chapter,
+    JobStatus,
+    ProcessingMethod,
+    Segment,
+    SourceType,
+)
 from app.storage.jobs import SqliteJobStore, StoredJob
 
 logger = logging.getLogger("video_transcriber.worker")
@@ -22,6 +28,7 @@ class TranscriptionResult:
     text: str
     segments: list[Segment]
     chapters: list[Chapter] = field(default_factory=list)
+    processing_method: ProcessingMethod | None = None
 
 
 class TranscriptionProcessor(Protocol):
@@ -81,6 +88,7 @@ class JobWorker:
             )
 
             result = self._process_source(active_job)
+            processing_seconds = monotonic() - started_at
             completed_job = self._store.complete(
                 active_job.id,
                 language=result.language,
@@ -88,6 +96,8 @@ class JobWorker:
                 text=result.text,
                 segments=result.segments,
                 chapters=result.chapters,
+                processing_seconds=processing_seconds,
+                processing_method=result.processing_method,
                 expires_at=datetime.now(UTC)
                 + timedelta(seconds=self._result_ttl_seconds),
             )
@@ -98,7 +108,9 @@ class JobWorker:
                         "job_id": completed_job.id,
                         "status": completed_job.status.value,
                         "duration_seconds": completed_job.duration_seconds,
-                        "processing_seconds": round(monotonic() - started_at, 3),
+                        "processing_seconds": round(processing_seconds, 3),
+                        "processing_method": completed_job.processing_method,
+                        "processing_speed": completed_job.processing_speed,
                     },
                 )
             return completed_job

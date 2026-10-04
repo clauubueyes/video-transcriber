@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 from yt_dlp.utils import DownloadError
 
+from app.models.transcriptions import ProcessingMethod
 from app.services.chapters import ChapterFetcher
 from app.services.subtitles import SubtitleFetcher
 from app.services.vtt import parse_vtt_file
@@ -59,6 +60,7 @@ class SubtitleFirstProcessor:
                         text=subtitles.text,
                         segments=subtitles.segments,
                         chapters=chapters,
+                        processing_method=ProcessingMethod.SUBTITLES,
                     )
 
         result = self._audio_fallback.process(source_url, requested_language)

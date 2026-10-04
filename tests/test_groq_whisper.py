@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.models.transcriptions import ProcessingMethod
 from app.services.groq_whisper import (
     GroqAPIError,
     GroqWhisperTranscriber,
@@ -40,6 +41,7 @@ def test_groq_whisper_transcribe_success(tmp_path: Path):
     assert result.text == "Hola mundo desde Groq API"
     assert result.language == "es"
     assert result.duration_seconds == 5.0
+    assert result.processing_method == ProcessingMethod.GROQ
     assert len(result.segments) == 2
     assert result.segments[0].text == "Hola mundo"
     assert result.segments[1].end == 5.0
@@ -171,6 +173,7 @@ def test_large_audio_is_processed_sequentially_with_global_timestamps(tmp_path):
     assert conversions == [(0, 61), (59, 62), (119, 6)]
     assert len(uploaded) == 3
     assert result.duration_seconds == 125
+    assert result.processing_method == ProcessingMethod.GROQ
     assert result.language == "Spanish"
     assert result.text == "Solape Parte 0 Parte 1 Parte 2"
     assert [segment.start for segment in result.segments] == [0, 1, 60, 120]

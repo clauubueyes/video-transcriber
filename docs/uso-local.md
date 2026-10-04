@@ -206,8 +206,14 @@ sin esperar a que un cliente vuelva a consultar el trabajo.
 ## Logs y privacidad
 
 Los logs son JSON e incluyen evento, ID de trabajo, estado, duración del audio
-y `processing_seconds` al completar una transcripción.
+y `processing_seconds`, `processing_method` y `processing_speed` al completar
+una transcripción. El tiempo también se guarda en SQLite y se muestra en el
+resultado de la interfaz.
 No incluyen tokens, URL de origen, audio ni texto transcrito.
+
+La guía [metricas-locales.md](metricas-locales.md) explica cómo consultar
+agregados separados por método y ejecutar pruebas repetibles con informes JSON
+de tiempo, velocidad y memoria.
 
 ## Pruebas
 

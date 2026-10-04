@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from app.models.transcriptions import Segment
+from app.models.transcriptions import ProcessingMethod, Segment
 from app.workers.job_worker import TranscriptionResult
 
 logger = logging.getLogger("video_transcriber.groq")
@@ -133,6 +133,7 @@ class GroqWhisperTranscriber:
             duration_seconds=duration,
             text=" ".join(texts),
             segments=segments,
+            processing_method=ProcessingMethod.GROQ,
         )
 
     @staticmethod
@@ -266,4 +267,5 @@ class GroqWhisperTranscriber:
             duration_seconds=duration,
             text=full_text,
             segments=segments,
+            processing_method=ProcessingMethod.GROQ,
         )

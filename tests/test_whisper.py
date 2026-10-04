@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from app.models.transcriptions import Segment
+from app.models.transcriptions import ProcessingMethod, Segment
 from app.services.whisper import FasterWhisperTranscriber, LocalModelNotFoundError
 
 
@@ -59,6 +59,7 @@ def test_transcriber_uses_local_model_and_caches_it(tmp_path) -> None:
     second = transcriber.transcribe(audio_path, "es")
 
     assert first.text == "Hola"
+    assert first.processing_method == ProcessingMethod.WHISPER_LOCAL
     assert first.segments == [Segment(start=0, end=1.5, text="Hola")]
     assert second.language == "es"
     assert factory_calls == 1

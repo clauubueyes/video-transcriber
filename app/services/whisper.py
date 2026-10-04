@@ -5,7 +5,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Protocol
 
-from app.models.transcriptions import Segment
+from app.models.transcriptions import ProcessingMethod, Segment
 from app.workers.job_worker import TranscriptionResult
 
 
@@ -79,6 +79,7 @@ class FasterWhisperTranscriber:
             duration_seconds=max((segment.end for segment in segments), default=0),
             text=" ".join(segment.text for segment in segments),
             segments=segments,
+            processing_method=ProcessingMethod.WHISPER_LOCAL,
         )
 
     def _get_model(self) -> WhisperModel:

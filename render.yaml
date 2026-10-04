@@ -6,7 +6,7 @@ services:
     region: frankfurt
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    dockerCommand: python -m app.container_entrypoint uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
     healthCheckPath: /ready
     envVars:
       - key: VIDEO_TRANSCRIBER_TOKEN

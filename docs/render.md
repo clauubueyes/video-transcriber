@@ -21,7 +21,7 @@ plan **Free**, health check `/ready` y copia las variables de `render.yaml`.
 Configura también Docker Command:
 
 ```sh
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+python -m app.container_entrypoint uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
 En esta modalidad debes generar tú un `VIDEO_TRANSCRIBER_TOKEN` largo y privado.
@@ -84,6 +84,9 @@ VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_BASE_URL=http://127.0.0.1:4416
 ```
 
 Si ya existen estas variables en Render, sus valores prevalecen sobre Docker.
+En un servicio existente actualiza también **Settings > Docker Command** con
+el comando indicado arriba: el override de Render puede omitir el entrypoint
+de la imagen si conserva el comando antiguo que ejecutaba Uvicorn directamente.
 Mantén el archivo de cookies que ya has configurado. No hace falta copiar tokens
 manualmente: son temporales y el proveedor los genera cuando se necesitan.
 La política `always` solicita también tokens para las llamadas iniciales al

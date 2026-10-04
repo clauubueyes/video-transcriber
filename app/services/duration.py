@@ -76,18 +76,21 @@ class YtDlpVideoDurationProbe:
         ydl_factory: Callable[[dict[str, Any]], YoutubeDLContext] | None = None,
         *,
         cookie_file: Path | None = None,
+        download_options: dict[str, Any] | None = None,
     ) -> None:
         self._ydl_factory = ydl_factory
         self._cookie_file = cookie_file
+        self._download_options = download_options or {}
 
     def get_duration_seconds(self, source_url: str) -> float | None:
         options = {
+            **self._download_options,
             "js_runtimes": {"deno": {}, "node": {}},
             "skip_download": True,
             "noplaylist": True,
             "quiet": True,
             "noprogress": True,
-            "no_warnings": True,
+            "no_warnings": False,
         }
         factory = self._ydl_factory or self._default_ydl_factory
         try:

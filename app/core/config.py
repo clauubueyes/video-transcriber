@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     groq_model: str = "whisper-large-v3-turbo"
     youtube_cookie_file: Path | None = None
+    youtube_player_clients: str | None = None
+    youtube_po_token_server_home: Path | None = None
+    youtube_proxy_url: SecretStr | None = None
 
     @cached_property
     def allowed_domain_set(self) -> frozenset[str]:

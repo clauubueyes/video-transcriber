@@ -41,7 +41,15 @@ No añadas un disco ni un worker separado para esta prueba.
 ## Si falla una URL de YouTube
 
 El contenedor incluye Deno y `yt-dlp[default]` (con los scripts EJS) para
-resolver los desafíos JavaScript de YouTube. Si aparece `Failed to extract
+resolver los desafíos JavaScript de YouTube. También incluye Node y
+`bgutil-ytdlp-pot-provider` 2.0.1 con su generador de PO Tokens de la misma
+versión. Se ejecuta como script cuando yt-dlp lo necesita, sin añadir otro
+servicio de Render. Usa los clientes `mweb,tv,web_safari`, siguiendo la
+[guía PO Token de yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide)
+y las [instrucciones del proveedor](https://github.com/Brainicism/bgutil-ytdlp-pot-provider).
+La generación de tokens y la descarga usan la misma salida de red.
+
+Si aparece `Failed to extract
 any player response`, sube estos cambios y ejecuta **Manual Deploy > Clear
 build cache & deploy** en Render para reconstruir la imagen. Los logs de
 construcción muestran las versiones de Deno y yt-dlp instaladas. Este error
@@ -51,8 +59,65 @@ Si falla la consulta de metadatos, la API devuelve un 502 con un mensaje que
 recomienda probar otro vídeo o subir el archivo. En **Render > Logs**, busca
 `video_metadata_failed`: el traceback conserva la causa de yt-dlp. Si aparece
 `Sign in to confirm you're not a bot`, YouTube está rechazando el acceso desde
-el servidor; cambiar la clave de Groq no resuelve ese bloqueo. Prueba una subida
-directa para comprobar la transcripción sin depender de YouTube.
+el servidor; cambiar la clave de Groq no resuelve ese bloqueo. Comprueba la
+integración de PO Tokens y, si persiste, configura otra salida de red como se
+describe abajo.
+
+### Activar y comprobar los PO Tokens
+
+Publica el código actualizado y reconstruye la imagen. El Dockerfile establece
+los valores por defecto, también para servicios existentes creados desde el
+panel; no depende de que Render vuelva a importar `render.yaml`:
+
+```env
+VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS=mweb,tv,web_safari
+VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME=/opt/bgutil/server
+```
+
+Si ya existen estas variables en Render, sus valores prevalecen sobre Docker.
+Mantén el archivo de cookies que ya has configurado. No hace falta copiar tokens
+manualmente: son temporales y el proveedor los genera cuando se necesitan.
+
+Al pegar una URL, los logs pueden mostrar:
+
+- `youtube_po_token_requested`: se ha solicitado generar un token; comprueba
+  también que la consulta o descarga posterior termina correctamente. El evento
+  por sí solo no confirma que se haya generado ni aceptado.
+- `youtube_provider_warning` / `youtube_provider_error`: avisos del extractor,
+  incluidos fallos del proveedor o de EJS. No se registran valores de los tokens
+  ni credenciales del proxy.
+- `youtube_subtitles_failed`: YouTube rechazó los subtítulos y se intenta
+  transcribir el audio. Antes este fallo interrumpía el trabajo.
+
+El plugin puede comprobar primero un proveedor HTTP en localhost:4416 y
+continuar con el script configurado. No es necesario abrir ese puerto.
+
+### Si la IP de Render sigue bloqueada
+
+Un PO Token no garantiza que YouTube acepte una IP de centro de datos. La
+documentación del proveedor lo indica expresamente. La aplicación permite
+configurar un proxy HTTP/HTTPS o SOCKS para metadatos, subtítulos, audio y la
+generación de tokens en API y worker:
+
+```env
+VIDEO_TRANSCRIBER_YOUTUBE_PROXY_URL=http://usuario:clave@host:puerto
+```
+
+Configúralo como variable secreta en Render con un proxy que controles o hayas
+contratado y cuya salida pueda acceder a YouTube. Codifica los caracteres
+reservados del usuario o contraseña en formato URL. La sesión de cookies debe
+ser compatible con esa salida de red. No uses una lista de proxies públicos ni
+subas sus credenciales al repositorio. La variable es opcional y no contrata ni
+activa ningún servicio de pago por sí sola.
+
+Para reproducir la comprobación desde el entorno de despliegue:
+
+```sh
+python -m app.youtube_check 'https://www.youtube.com/watch?v=tu2lkbYVjIk' --audio
+```
+
+El resultado incluye la duración y el tamaño del audio, y elimina la descarga
+temporal al terminar. Una prueba local no confirma que la IP de Render funcione.
 
 ### Configurar cookies para el bloqueo antibot
 
@@ -80,8 +145,8 @@ un bloqueo de la IP del servidor.
 
 Render monta los secretos en `/etc/secrets/`, según su
 [documentación](https://render.com/docs/configure-environment-variables#secret-files).
-Si el bloqueo persiste, utiliza la subida directa o ejecuta el servicio localmente.
-En local configura la variable con la ruta del archivo exportado.
+Si el bloqueo persiste, comprueba los PO Tokens y la salida de red descritos
+arriba. En local configura la variable con la ruta del archivo exportado.
 
 Al probar una URL, busca estos eventos en los logs de la API o del worker:
 

@@ -17,6 +17,10 @@ services:
         value: whisper-large-v3-turbo
       - key: VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE
         value: /etc/secrets/youtube-cookies.txt
+      - key: VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS
+        value: mweb,tv,web_safari
+      - key: VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME
+        value: /opt/bgutil/server
       - key: VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API
         value: "true"
       - key: VIDEO_TRANSCRIBER_PUBLIC_WEB_ENABLED

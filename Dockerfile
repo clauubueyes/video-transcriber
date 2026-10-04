@@ -1,15 +1,35 @@
-FROM python:3.12-slim
+FROM node:26-bookworm-slim AS pot-builder
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates git \
+    && rm -rf /var/lib/apt/lists/* \
+    && git clone --depth 1 --branch 2.0.1 \
+       https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil
+
+WORKDIR /opt/bgutil/server
+RUN npm ci --no-audit --no-fund \
+    && npx tsc \
+    && npm prune --omit=dev --no-audit --no-fund \
+    && node build/generate_once.js --version
+
+FROM python:3.12-slim-bookworm
 
 # yt-dlp uses Deno to solve YouTube's JavaScript challenges.
 COPY --from=denoland/deno:bin-2.9.7 /deno /usr/local/bin/deno
+COPY --from=pot-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=pot-builder /opt/bgutil/server/build /opt/bgutil/server/build
+COPY --from=pot-builder /opt/bgutil/server/node_modules /opt/bgutil/server/node_modules
+COPY --from=pot-builder /opt/bgutil/server/package.json /opt/bgutil/server/package.json
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS=mweb,tv,web_safari \
+    VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME=/opt/bgutil/server
 
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ffmpeg \
+    && apt-get install --no-install-recommends -y ffmpeg libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml Readme.md ./
@@ -18,7 +38,8 @@ COPY app ./app
 RUN pip install --no-cache-dir . \
     && deno --version \
     && python -m yt_dlp --version \
-    && python -c "import yt_dlp_ejs"
+    && python -c "import yt_dlp_ejs; import yt_dlp_plugins.extractor.getpot_bgutil_script" \
+    && node /opt/bgutil/server/build/generate_once.js --version
 
 EXPOSE 8000
 

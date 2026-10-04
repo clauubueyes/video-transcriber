@@ -18,6 +18,20 @@ def test_settings_defaults_to_no_cookies_without_environment(monkeypatch):
     assert settings.youtube_cookie_file is None
 
 
+def test_youtube_access_settings_keep_proxy_credentials_secret(monkeypatch, tmp_path):
+    monkeypatch.setenv("VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS", "mweb,tv,web_safari")
+    monkeypatch.setenv("VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME", str(tmp_path))
+    monkeypatch.setenv(
+        "VIDEO_TRANSCRIBER_YOUTUBE_PROXY_URL", "http://user:private@proxy.example:8080",
+    )
+    settings = Settings(token="test-token", _env_file=None)
+
+    assert settings.youtube_player_clients == "mweb,tv,web_safari"
+    assert settings.youtube_po_token_server_home == tmp_path
+    assert settings.youtube_proxy_url.get_secret_value().endswith("proxy.example:8080")
+    assert "private" not in repr(settings)
+
+
 def test_settings_normalizes_allowed_domains() -> None:
     settings = Settings(
         token="test-token",

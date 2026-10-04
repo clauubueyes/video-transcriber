@@ -1,6 +1,7 @@
 """Contexto yt-dlp con una copia temporal de las cookies del servidor."""
 
 import logging
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,8 +10,60 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
+
+from app.core.config import Settings
 
 logger = logging.getLogger("video_transcriber.ytdlp")
+
+
+def _redact(message: str, proxy: str | None) -> str:
+    if proxy:
+        message = message.replace(proxy, "[proxy]")
+    return re.sub(r"(https?|socks\w*)://[^\s/@]+@", r"\1://[redacted]@", message)
+
+
+class _ProviderLogger:
+    def __init__(self, proxy: str | None) -> None:
+        self._proxy = proxy
+
+    def debug(self, message: str) -> None:
+        # yt-dlp también envía mensajes informativos a debug(). No registrar
+        # trazas detalladas, identificadores de sesión ni valores de los tokens.
+        if "Generating a " in message and " PO Token " in message:
+            logger.info("youtube_po_token_requested")
+
+    def warning(self, message: str) -> None:
+        logger.warning("youtube_provider_warning: %s", _redact(message, self._proxy))
+
+    def error(self, message: str) -> None:
+        logger.error("youtube_provider_error: %s", _redact(message, self._proxy))
+
+
+def youtube_download_options(settings: Settings) -> dict[str, Any]:
+    """Comparte cliente, proveedor POT y salida de red en API y worker."""
+    options: dict[str, Any] = {}
+    extractor_args: dict[str, Any] = {}
+    if settings.youtube_player_clients:
+        clients = [
+            client.strip() for client in settings.youtube_player_clients.split(",")
+            if client.strip()
+        ]
+        if clients:
+            extractor_args["youtube"] = {"player_client": clients}
+    if settings.youtube_po_token_server_home:
+        extractor_args["youtubepot-bgutilscript"] = {
+            "server_home": [str(settings.youtube_po_token_server_home)],
+        }
+    if extractor_args:
+        options["extractor_args"] = extractor_args
+    if settings.youtube_proxy_url:
+        proxy = settings.youtube_proxy_url.get_secret_value().strip()
+        if proxy:
+            options["proxy"] = proxy
+    if options:
+        options["logger"] = _ProviderLogger(options.get("proxy"))
+    return options
 
 
 @contextmanager
@@ -18,6 +71,21 @@ def youtube_dl(
     options: dict[str, Any], cookie_file: Path | None = None,
 ) -> Iterator[YoutubeDL]:
     """Evita modificar el secreto original y compartir escrituras entre trabajos."""
+    # Evitar que credenciales del proxy aparezcan en tracebacks de API y worker.
+    try:
+        with _youtube_dl(options, cookie_file) as ydl:
+            yield ydl
+    except DownloadError as error:
+        safe_message = _redact(str(error), options.get("proxy"))
+        if safe_message != str(error):
+            raise DownloadError(safe_message) from None
+        raise
+
+
+@contextmanager
+def _youtube_dl(
+    options: dict[str, Any], cookie_file: Path | None,
+) -> Iterator[YoutubeDL]:
     if cookie_file is None:
         logger.info(
             "youtube_cookie_file_not_configured: "

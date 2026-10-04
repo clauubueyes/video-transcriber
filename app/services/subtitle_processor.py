@@ -1,11 +1,16 @@
 """Procesador que aprovecha subtítulos antes de usar una transcripción de audio."""
 
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
+from yt_dlp.utils import DownloadError
 
 from app.services.subtitles import SubtitleFetcher
 from app.services.vtt import parse_vtt_file
 from app.workers.job_worker import TranscriptionProcessor, TranscriptionResult
+
+logger = logging.getLogger("video_transcriber.subtitles")
 
 
 class SubtitleFirstProcessor:
@@ -25,11 +30,15 @@ class SubtitleFirstProcessor:
         requested_language: str | None,
     ) -> TranscriptionResult:
         with TemporaryDirectory(prefix="video-transcriber-") as temporary_directory:
-            subtitle_path = self._subtitle_fetcher.fetch(
-                source_url,
-                requested_language,
-                Path(temporary_directory),
-            )
+            try:
+                subtitle_path = self._subtitle_fetcher.fetch(
+                    source_url,
+                    requested_language,
+                    Path(temporary_directory),
+                )
+            except DownloadError:
+                logger.warning("youtube_subtitles_failed: se intenta descargar audio.")
+                subtitle_path = None
             if subtitle_path is not None:
                 subtitles = parse_vtt_file(subtitle_path)
                 if subtitles.segments:

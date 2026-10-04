@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import pytest
+from yt_dlp.utils import DownloadError
+
 from app.models.transcriptions import Segment
 from app.services.subtitle_processor import SubtitleFirstProcessor
 from app.workers.job_worker import TranscriptionResult
@@ -67,3 +70,31 @@ def test_processor_uses_audio_fallback_without_subtitles() -> None:
 
     assert result.text == "Audio"
     assert fallback.calls == 1
+
+
+def test_subtitle_provider_failure_still_transcribes_audio(caplog):
+    class BlockedSubtitles:
+        def fetch(self, *args):
+            raise DownloadError("Unable to download subtitles: HTTP Error 403")
+
+    fallback = RecordingFallback()
+    result = SubtitleFirstProcessor(BlockedSubtitles(), fallback).process(
+        "https://www.youtube.com/watch?v=abc", "es",
+    )
+
+    assert result.text == "Audio"
+    assert fallback.calls == 1
+    assert "youtube_subtitles_failed" in caplog.text
+
+
+def test_unexpected_subtitle_failure_is_not_hidden():
+    class BrokenSubtitles:
+        def fetch(self, *args):
+            raise OSError("disk full")
+
+    fallback = RecordingFallback()
+    with pytest.raises(OSError, match="disk full"):
+        SubtitleFirstProcessor(BrokenSubtitles(), fallback).process(
+            "https://www.youtube.com/watch?v=abc", "es",
+        )
+    assert fallback.calls == 0

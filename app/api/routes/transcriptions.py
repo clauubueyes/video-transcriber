@@ -51,6 +51,7 @@ from app.services.source_validation import (
     validate_allowed_source,
 )
 from app.services.uploads import TemporaryUploadStore, UploadValidationError
+from app.services.ytdlp import youtube_download_options
 from app.storage.jobs import SqliteJobStore, StoredJob
 from app.workers.job_worker import JobWorker
 from app.workers.runner import BoundedJobRunner
@@ -86,6 +87,7 @@ def get_job_worker(
                 groq_key,
                 settings.groq_model,
                 cookie_file=settings.youtube_cookie_file,
+                download_options=youtube_download_options(settings),
             )
             file_processor = create_groq_file_processor(groq_key, settings.groq_model)
         else:
@@ -94,6 +96,7 @@ def get_job_worker(
                 device=settings.whisper_device,
                 compute_type=settings.whisper_compute_type,
                 cookie_file=settings.youtube_cookie_file,
+                download_options=youtube_download_options(settings),
             )
             file_processor = create_local_file_processor(
                 settings.model_path,
@@ -114,7 +117,10 @@ def get_video_duration_probe(
     settings: Settings = Depends(get_settings),
 ) -> VideoDurationProbe:
     """Obtiene la sonda local de metadatos usada antes de encolar trabajo."""
-    return YtDlpVideoDurationProbe(cookie_file=settings.youtube_cookie_file)
+    return YtDlpVideoDurationProbe(
+        cookie_file=settings.youtube_cookie_file,
+        download_options=youtube_download_options(settings),
+    )
 
 
 def get_token_rate_limiter(

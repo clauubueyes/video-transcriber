@@ -1,6 +1,7 @@
 """Composición del procesamiento local, sin proveedores de IA externos."""
 
 from pathlib import Path
+from typing import Any
 
 from app.services.audio import YtDlpAudioFetcher
 from app.services.audio_processor import AudioWhisperProcessor
@@ -18,10 +19,11 @@ def create_local_processor(
     device: str,
     compute_type: str,
     cookie_file: Path | None = None,
+    download_options: dict[str, Any] | None = None,
 ) -> TranscriptionProcessor:
     """Crea el flujo VTT → audio → Whisper usando recursos de la máquina local."""
     audio_processor = AudioWhisperProcessor(
-        YtDlpAudioFetcher(cookie_file=cookie_file),
+        YtDlpAudioFetcher(cookie_file=cookie_file, download_options=download_options),
         FasterWhisperTranscriber(
             model_path,
             device=device,
@@ -29,7 +31,10 @@ def create_local_processor(
         ),
     )
     return SubtitleFirstProcessor(
-        YtDlpSubtitleFetcher(cookie_file=cookie_file), audio_processor
+        YtDlpSubtitleFetcher(
+            cookie_file=cookie_file, download_options=download_options,
+        ),
+        audio_processor,
     )
 
 
@@ -54,14 +59,18 @@ def create_groq_processor(
     model: str = "whisper-large-v3-turbo",
     *,
     cookie_file: Path | None = None,
+    download_options: dict[str, Any] | None = None,
 ) -> TranscriptionProcessor:
     """Crea el flujo VTT → audio → Groq API en la nube (0 MB RAM local)."""
     audio_processor = AudioWhisperProcessor(
-        YtDlpAudioFetcher(cookie_file=cookie_file),
+        YtDlpAudioFetcher(cookie_file=cookie_file, download_options=download_options),
         GroqWhisperTranscriber(api_key=api_key, model=model),
     )
     return SubtitleFirstProcessor(
-        YtDlpSubtitleFetcher(cookie_file=cookie_file), audio_processor
+        YtDlpSubtitleFetcher(
+            cookie_file=cookie_file, download_options=download_options,
+        ),
+        audio_processor,
     )
 
 

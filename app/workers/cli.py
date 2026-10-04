@@ -14,6 +14,7 @@ from app.services.processor_factory import (
     create_local_processor,
 )
 from app.services.uploads import TemporaryUploadStore
+from app.services.ytdlp import youtube_download_options
 from app.storage.jobs import SqliteJobStore
 from app.workers.job_worker import (
     FileTranscriptionProcessor,
@@ -95,6 +96,7 @@ def main() -> int:
             api_key,
             settings.groq_model,
             cookie_file=settings.youtube_cookie_file,
+            download_options=youtube_download_options(settings),
         )
         file_processor = create_groq_file_processor(api_key, settings.groq_model)
     else:
@@ -103,6 +105,7 @@ def main() -> int:
             device=settings.whisper_device,
             compute_type=settings.whisper_compute_type,
             cookie_file=settings.youtube_cookie_file,
+            download_options=youtube_download_options(settings),
         )
         file_processor = create_local_file_processor(
             settings.model_path,

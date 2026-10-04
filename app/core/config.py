@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     youtube_proxy_url: SecretStr | None = None
     youtube_impersonate: str | None = None
     youtube_po_token_policy: Literal["auto", "always", "never"] = "auto"
+    youtube_po_token_mode: Literal["http", "script"] = "http"
+    youtube_js_runtimes: str | None = None
+    youtube_warp_config: SecretStr | None = None
 
     @cached_property
     def allowed_domain_set(self) -> frozenset[str]:

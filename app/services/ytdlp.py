@@ -51,6 +51,18 @@ def youtube_download_options(settings: Settings) -> dict[str, Any]:
     """Comparte cliente, proveedor POT y salida de red en API y worker."""
     options: dict[str, Any] = {}
     extractor_args: dict[str, Any] = {}
+    base_url = (
+        settings.youtube_po_token_base_url
+        if settings.youtube_po_token_mode == "http" else None
+    )
+    if settings.youtube_js_runtimes:
+        runtimes = [
+            value.strip().lower()
+            for value in settings.youtube_js_runtimes.split(",") if value.strip()
+        ]
+        if set(runtimes) - {"deno", "node", "bun", "quickjs"}:
+            raise ValueError("Runtime JavaScript de YouTube no reconocido.")
+        options["js_runtimes"] = {value: {} for value in runtimes}
     if settings.youtube_player_clients:
         clients = [
             client.strip() for client in settings.youtube_player_clients.split(",")
@@ -58,13 +70,13 @@ def youtube_download_options(settings: Settings) -> dict[str, Any]:
         ]
         if clients:
             extractor_args["youtube"] = {"player_client": clients}
-    if settings.youtube_po_token_base_url or settings.youtube_po_token_server_home:
+    if base_url or settings.youtube_po_token_server_home:
         extractor_args.setdefault("youtube", {})["fetch_pot"] = [
             settings.youtube_po_token_policy,
         ]
-    if settings.youtube_po_token_base_url:
+    if base_url:
         extractor_args["youtubepot-bgutilhttp"] = {
-            "base_url": [settings.youtube_po_token_base_url],
+            "base_url": [base_url],
         }
     elif settings.youtube_po_token_server_home:
         extractor_args["youtubepot-bgutilscript"] = {

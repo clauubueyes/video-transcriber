@@ -49,7 +49,9 @@ class YtDlpSubtitleFetcher:
         temporary_directory.mkdir(parents=True, exist_ok=True)
         options = {
             **self._download_options,
-            "js_runtimes": {"deno": {}, "node": {}},
+            "js_runtimes": self._download_options.get(
+                "js_runtimes", {"deno": {}, "node": {}},
+            ),
             "skip_download": True,
             "writesubtitles": True,
             "writeautomaticsub": True,

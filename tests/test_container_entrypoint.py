@@ -48,3 +48,28 @@ def test_cleanup_kills_provider_that_ignores_shutdown():
     container_entrypoint.stop_process(provider)
     provider.terminate.assert_called_once()
     provider.kill.assert_called_once()
+
+
+def test_proxy_crash_stops_application_and_cleans_up(monkeypatch):
+    monkeypatch.setattr(container_entrypoint.sys, "argv", ["entrypoint", "uvicorn"])
+    monkeypatch.setenv("VIDEO_TRANSCRIBER_YOUTUBE_WARP_CONFIG", "private-config")
+    monkeypatch.setenv(
+        "VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_BASE_URL", "http://127.0.0.1:4416"
+    )
+    monkeypatch.setenv(
+        "VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME", "/opt/bgutil/server"
+    )
+    monkeypatch.setenv("VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_MODE", "script")
+    proxy = Mock()
+    proxy.poll.return_value = 1
+    application = Mock()
+    application.poll.return_value = None
+    monkeypatch.setattr(container_entrypoint, "start_proxy", lambda *args: proxy)
+    monkeypatch.setattr(container_entrypoint, "wait_for_proxy", lambda *args: None)
+    monkeypatch.setattr(
+        container_entrypoint.subprocess, "Popen", lambda *args: application
+    )
+    stop = Mock()
+    monkeypatch.setattr(container_entrypoint, "stop_process", stop)
+    assert container_entrypoint.main() == 1
+    assert stop.call_args_list == [((application,),), ((proxy,),)]

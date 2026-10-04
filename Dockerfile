@@ -12,6 +12,10 @@ RUN npm ci --no-audit --no-fund \
     && npm prune --omit=dev --no-audit --no-fund \
     && node build/generate_once.js --version
 
+RUN mv build/generate_once.js build/generate_once.original.js
+COPY deploy/bgutil_generate_once.mjs /opt/bgutil/server/build/generate_once.js
+RUN node build/generate_once.js --version
+
 FROM python:3.12-slim-bookworm
 
 # yt-dlp uses Deno to solve YouTube's JavaScript challenges.
@@ -23,6 +27,7 @@ COPY --from=pot-builder /opt/bgutil/server/package.json /opt/bgutil/server/packa
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    NODE_OPTIONS="--max-old-space-size=192 --max-semi-space-size=2" \
     VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS=mweb,tv,web_safari \
     VIDEO_TRANSCRIBER_YOUTUBE_IMPERSONATE=chrome \
     VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_POLICY=always \
@@ -32,8 +37,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ffmpeg libatomic1 \
+    && apt-get install --no-install-recommends -y ca-certificates ffmpeg libatomic1 \
     && rm -rf /var/lib/apt/lists/*
+
+COPY deploy/install_sing_box.py /tmp/install_sing_box.py
+RUN python /tmp/install_sing_box.py && rm /tmp/install_sing_box.py
 
 COPY pyproject.toml Readme.md ./
 COPY app ./app

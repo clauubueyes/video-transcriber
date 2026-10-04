@@ -5,9 +5,12 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from time import monotonic, sleep
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
+
+from app.network_proxy import start_proxy, wait_for_proxy
 
 PROVIDER_URL = "http://127.0.0.1:4416"
 
@@ -43,32 +46,50 @@ def main() -> int:
         raise SystemExit("Falta el comando principal del contenedor.")
     server_home = os.environ.get("VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME")
     base_url = os.environ.get("VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_BASE_URL")
-    if not server_home or base_url != PROVIDER_URL:
-        os.execvp(command[0], command)
-    provider = subprocess.Popen(
-        ["node", "--max-old-space-size=128", str(Path(server_home) / "build/main.js"),
-         "--host", "127.0.0.1", "--port", "4416"],
-        # El proveedor puede imprimir datos de sesión: el plugin registra
-        # avisos y errores sin publicar tokens ni credenciales.
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    provider_mode = os.environ.get("VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_MODE", "http")
+    warp_config = os.environ.get("VIDEO_TRANSCRIBER_YOUTUBE_WARP_CONFIG")
+    local_provider = bool(
+        server_home and base_url == PROVIDER_URL and provider_mode == "http"
     )
+    if not local_provider and not warp_config:
+        os.execvp(command[0], command)
+    provider = None
+    network_proxy = None
     application = None
+    directory = TemporaryDirectory(prefix="video-transcriber-proxy-")
 
     def shutdown(signum, frame):
         if application is not None:
             stop_process(application)
-        stop_process(provider)
+        if provider is not None:
+            stop_process(provider)
+        if network_proxy is not None:
+            stop_process(network_proxy)
         raise SystemExit(0)
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
     try:
-        wait_for_provider(provider)
-        print("youtube_po_token_provider_ready", flush=True)
+        if warp_config:
+            network_proxy = start_proxy(warp_config, Path(directory.name))
+            wait_for_proxy(network_proxy)
+            print("youtube_warp_proxy_ready", flush=True)
+        if local_provider:
+            provider = subprocess.Popen(
+                ["node", "--max-old-space-size=128",
+                 str(Path(server_home) / "build/main.js"),
+                 "--host", "127.0.0.1", "--port", "4416"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            wait_for_provider(provider)
+            print("youtube_po_token_provider_ready", flush=True)
         application = subprocess.Popen(command)
         while application.poll() is None:
-            if provider.poll() is not None:
+            if provider is not None and provider.poll() is not None:
                 print("youtube_po_token_provider_exited", flush=True)
+                return 1
+            if network_proxy is not None and network_proxy.poll() is not None:
+                print("youtube_warp_proxy_exited", flush=True)
                 return 1
             sleep(0.5)
         return application.returncode
@@ -78,7 +99,11 @@ def main() -> int:
     finally:
         if application is not None:
             stop_process(application)
-        stop_process(provider)
+        if provider is not None:
+            stop_process(provider)
+        if network_proxy is not None:
+            stop_process(network_proxy)
+        directory.cleanup()
 
 
 if __name__ == "__main__":

@@ -85,7 +85,9 @@ class YtDlpVideoDurationProbe:
     def get_duration_seconds(self, source_url: str) -> float | None:
         options = {
             **self._download_options,
-            "js_runtimes": {"deno": {}, "node": {}},
+            "js_runtimes": self._download_options.get(
+                "js_runtimes", {"deno": {}, "node": {}},
+            ),
             "skip_download": True,
             "noplaylist": True,
             "quiet": True,

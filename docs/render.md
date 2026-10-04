@@ -111,7 +111,8 @@ Al pegar una URL, los logs pueden mostrar:
 No expongas el puerto 4416 a Internet: el servicio solo escucha en localhost.
 Para ejecución sin Docker puedes usar un proveedor HTTP ya arrancado con
 `VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_BASE_URL`, o el método script configurando
-solo `VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME`. En Render se utiliza HTTP.
+solo `VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME`. El perfil WARP de abajo
+utiliza este último método para reducir el consumo de memoria.
 
 ### Si la IP de Render sigue bloqueada
 
@@ -139,6 +140,62 @@ python -m app.youtube_check 'https://www.youtube.com/watch?v=tu2lkbYVjIk' --audi
 
 El resultado incluye la duración y el tamaño del audio, y elimina la descarga
 temporal al terminar. Una prueba local no confirma que la IP de Render funcione.
+
+### Salida WARP con generación de tokens bajo demanda
+
+El contenedor incluye `sing-box` 1.14.2, con checksum verificado durante la
+construcción. Puede ejecutar WireGuard en espacio de usuario y ofrecer un
+proxy solo en `127.0.0.1:40000`, sin un dispositivo TUN ni permisos elevados.
+Este componente arranca únicamente si se configura
+`VIDEO_TRANSCRIBER_YOUTUBE_WARP_CONFIG`. La aplicación supervisa el proxy y lo
+cierra junto con la API. Las claves se escriben en un archivo temporal privado
+y los logs del proxy están desactivados.
+
+Para usar Cloudflare WARP hay que registrar previamente un dispositivo y
+aceptar sus [condiciones](https://www.cloudflare.com/application/terms/).
+El registro empleado en esta investigación se hizo con
+[wgcf](https://github.com/ViRb3/wgcf), una herramienta independiente de
+Cloudflare. Guarda la configuración WireGuard y el registro del dispositivo
+como secretos; no los publiques en GitHub.
+
+Configura en Render un JSON válido de sing-box como variable secreta
+`VIDEO_TRANSCRIBER_YOUTUBE_WARP_CONFIG`. Debe contener un único inbound de tipo
+`mixed`, con `listen=127.0.0.1` y `listen_port=40000`, un endpoint WireGuard con
+`system=false`, y la ruta de salida y la resolución DNS a través del túnel.
+Los campos y el formato están en la
+[documentación de WireGuard de sing-box](https://sing-box.sagernet.org/configuration/endpoint/wireguard/).
+El JSON contiene la clave privada del dispositivo. El registro y la conversión
+se hacen una vez; el contenedor no registra dispositivos automáticamente.
+
+El perfil para reducir el consumo de memoria en Render Free es:
+
+```env
+VIDEO_TRANSCRIBER_YOUTUBE_PROXY_URL=socks5h://127.0.0.1:40000
+VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS=mweb
+VIDEO_TRANSCRIBER_YOUTUBE_IMPERSONATE=chrome
+VIDEO_TRANSCRIBER_YOUTUBE_JS_RUNTIMES=node
+VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME=/opt/bgutil/server
+VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_MODE=script
+VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_POLICY=auto
+NODE_OPTIONS=--max-old-space-size=192 --max-semi-space-size=2
+```
+
+Selecciona `VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_MODE=script` en este perfil para
+generar los tokens mediante procesos que terminan después de cada solicitud.
+Este modo ignora la URL del proveedor HTTP incluida por defecto en Docker.
+Así no permanece un servidor Node adicional en memoria mientras se resuelven
+los desafíos JavaScript. El generador incluye un wrapper para responder a
+`--version` sin cargar las bibliotecas de generación y evitar el timeout de
+15 segundos del plugin en el arranque. `VIDEO_TRANSCRIBER_YOUTUBE_JS_RUNTIMES`
+selecciona Node de forma explícita para API y worker; instalar Node junto a
+Deno no basta para cambiar la selección del extractor.
+
+Prueba este perfil sin `VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE` para vídeos
+públicos, manteniendo guardado el secreto de cookies por si necesitas volver
+al perfil autenticado. Usa el Docker Command indicado al principio de esta
+guía, reconstruye y espera a que Render indique **Live** antes de comprobar
+la transcripción completa. Cambiar la salida de red no garantiza que YouTube
+acepte todos los vídeos ni que mantenga ese acceso indefinidamente.
 
 ### Configurar cookies para el bloqueo antibot
 

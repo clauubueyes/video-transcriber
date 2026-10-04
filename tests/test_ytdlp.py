@@ -205,6 +205,8 @@ def test_access_options_reach_all_youtube_operations(operation, tmp_path, monkey
         token="test", _env_file=None, youtube_player_clients="mweb,tv,web_safari",
         youtube_po_token_server_home=tmp_path,
         youtube_proxy_url="http://user:secret@proxy.example:8080",
+        youtube_js_runtimes="node", youtube_po_token_mode="script",
+        youtube_po_token_base_url="http://127.0.0.1:4416",
     ))
     received = []
 
@@ -234,5 +236,8 @@ def test_access_options_reach_all_youtube_operations(operation, tmp_path, monkey
     else:
         YtDlpSubtitleFetcher(download_options=options).fetch(url, "es", tmp_path)
 
-    for name in ("proxy", "extractor_args", "logger"):
+    assert received[0]["js_runtimes"] == {"node": {}}
+    assert "youtubepot-bgutilhttp" not in received[0]["extractor_args"]
+    assert "youtubepot-bgutilscript" in received[0]["extractor_args"]
+    for name in ("proxy", "extractor_args", "logger", "js_runtimes"):
         assert received[0][name] == options[name]

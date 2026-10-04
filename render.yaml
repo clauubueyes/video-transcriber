@@ -15,6 +15,8 @@ services:
         sync: false
       - key: VIDEO_TRANSCRIBER_GROQ_MODEL
         value: whisper-large-v3-turbo
+      - key: VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE
+        value: /etc/secrets/youtube-cookies.txt
       - key: VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API
         value: "true"
       - key: VIDEO_TRANSCRIBER_PUBLIC_WEB_ENABLED

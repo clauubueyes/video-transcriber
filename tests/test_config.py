@@ -1,6 +1,23 @@
 from app.core.config import Settings
 
 
+def test_settings_reads_youtube_cookie_file_from_environment(monkeypatch, tmp_path):
+    cookie_file = tmp_path / "youtube-cookies.txt"
+    monkeypatch.setenv("VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE", str(cookie_file))
+
+    settings = Settings(token="test-token", _env_file=None)
+
+    assert settings.youtube_cookie_file == cookie_file
+
+
+def test_settings_defaults_to_no_cookies_without_environment(monkeypatch):
+    monkeypatch.delenv("VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE", raising=False)
+
+    settings = Settings(token="test-token", _env_file=None)
+
+    assert settings.youtube_cookie_file is None
+
+
 def test_settings_normalizes_allowed_domains() -> None:
     settings = Settings(
         token="test-token",

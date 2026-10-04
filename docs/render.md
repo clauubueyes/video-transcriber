@@ -83,6 +83,23 @@ Render monta los secretos en `/etc/secrets/`, según su
 Si el bloqueo persiste, utiliza la subida directa o ejecuta el servicio localmente.
 En local configura la variable con la ruta del archivo exportado.
 
+Al probar una URL, busca estos eventos en los logs de la API o del worker:
+
+- `youtube_cookie_file_not_configured`: el proceso recibió `None` como ruta;
+  comprueba la variable `VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE` en ese servicio
+  y vuelve a desplegar después de configurarla.
+- `youtube_cookie_file_loaded`: el archivo se copió y se pasó a yt-dlp para esa
+  operación. No confirma que las cookies sean válidas, que la sesión siga activa
+  ni que YouTube acepte la IP del servidor.
+- `youtube_cookie_file_missing`: la ruta configurada no existe.
+- `youtube_cookie_file_unreadable`: la copia falló por otro error de acceso o
+  de escritura; el evento indica el tipo de error y su código `errno`, y la
+  operación falla.
+
+Estos mensajes no incluyen el contenido de las cookies. La ausencia de
+`youtube_cookie_file_missing` por sí sola no permite deducir que la variable
+no se leyó: el archivo también puede haberse cargado correctamente.
+
 Si aparece `youtube_cookie_file_missing` en los logs, la ruta configurada no
 existe y la aplicación continúa sin cookies. Crea el archivo secreto con el
 nombre exacto `youtube-cookies.txt`, o elimina

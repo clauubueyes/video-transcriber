@@ -6,7 +6,10 @@ from app.services.ytdlp import youtube_dl
 
 
 @pytest.mark.parametrize("fail", [False, True])
-def test_cookie_copy_is_writable_and_removed_on_exit(tmp_path, monkeypatch, fail):
+def test_cookie_copy_is_writable_and_removed_on_exit(
+    tmp_path, monkeypatch, caplog, fail,
+):
+    caplog.set_level("INFO", logger="video_transcriber.ytdlp")
     original = tmp_path / "youtube-cookies.txt"
     original.write_text("original", encoding="utf-8")
     copies = []
@@ -34,12 +37,15 @@ def test_cookie_copy_is_writable_and_removed_on_exit(tmp_path, monkeypatch, fail
 
     assert original.read_text(encoding="utf-8") == "original"
     assert not copies[0].exists()
+    assert "youtube_cookie_file_loaded" in caplog.text
+    assert "original" not in caplog.text
 
 
-def test_no_cookies_keeps_anonymous_options(monkeypatch):
+def test_no_cookies_keeps_anonymous_options(monkeypatch, caplog):
     from contextlib import nullcontext
 
     received = []
+    caplog.set_level("INFO", logger="video_transcriber.ytdlp")
 
     def factory(options):
         received.append(options)
@@ -49,6 +55,7 @@ def test_no_cookies_keeps_anonymous_options(monkeypatch):
     with youtube_dl({"skip_download": True}):
         pass
     assert received == [{"skip_download": True}]
+    assert "youtube_cookie_file_not_configured" in caplog.text
 
 
 def test_missing_cookie_file_uses_anonymous_options(tmp_path, monkeypatch, caplog):
@@ -69,6 +76,22 @@ def test_missing_cookie_file_uses_anonymous_options(tmp_path, monkeypatch, caplo
     assert options == {"skip_download": True}
     assert "youtube_cookie_file_missing" in caplog.text
     assert "VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE" in caplog.text
+
+
+def test_unreadable_cookie_file_logs_and_preserves_error(tmp_path, monkeypatch, caplog):
+    def deny_copy(source, destination):
+        raise PermissionError("cookie file is not readable")
+
+    def unexpected_provider(options):
+        pytest.fail("yt-dlp must not run after a cookie read error")
+
+    monkeypatch.setattr("app.services.ytdlp.copyfile", deny_copy)
+    monkeypatch.setattr("app.services.ytdlp.YoutubeDL", unexpected_provider)
+    with pytest.raises(PermissionError, match="cookie file is not readable"):
+        with youtube_dl({}, tmp_path / "cookies.txt"):
+            pass
+
+    assert "youtube_cookie_file_unreadable" in caplog.text
 
 
 def test_provider_file_error_is_not_retried_without_cookies(tmp_path, monkeypatch):

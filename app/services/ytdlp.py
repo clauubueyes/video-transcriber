@@ -19,6 +19,11 @@ def youtube_dl(
 ) -> Iterator[YoutubeDL]:
     """Evita modificar el secreto original y compartir escrituras entre trabajos."""
     if cookie_file is None:
+        logger.info(
+            "youtube_cookie_file_not_configured: "
+            "VIDEO_TRANSCRIBER_YOUTUBE_COOKIE_FILE no está configurada; "
+            "se continúa sin cookies."
+        )
         with YoutubeDL(options) as ydl:
             yield ydl
         return
@@ -35,7 +40,21 @@ def youtube_dl(
                 cookie_file,
             )
             effective_options = options
+        except OSError as error:
+            logger.error(
+                "youtube_cookie_file_unreadable: %s; "
+                "no se pudo copiar el archivo de cookies (%s, errno=%s).",
+                cookie_file,
+                type(error).__name__,
+                error.errno,
+            )
+            raise
         else:
+            logger.info(
+                "youtube_cookie_file_loaded: %s; "
+                "se usa una copia temporal para esta operación de yt-dlp.",
+                cookie_file,
+            )
             effective_options = {**options, "cookiefile": str(writable_cookies)}
         with YoutubeDL(effective_options) as ydl:
             yield ydl

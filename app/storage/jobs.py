@@ -15,6 +15,10 @@ class InvalidJobTransitionError(ValueError):
     """El trabajo no puede cambiar al estado solicitado."""
 
 
+class JobQueueFullError(RuntimeError):
+    """La cola alcanzó el máximo de trabajos pendientes y activos."""
+
+
 @dataclass(frozen=True)
 class StoredJob:
     id: str
@@ -74,6 +78,8 @@ class SqliteJobStore:
         source_url: str,
         language: str | None,
         source_type: SourceType = SourceType.URL,
+        *,
+        max_pending_jobs: int | None = None,
     ) -> StoredJob:
         now = datetime.now(UTC)
         job = StoredJob(
@@ -91,6 +97,11 @@ class SqliteJobStore:
             expires_at=None,
         )
         with self._lock, self._connection:
+            if max_pending_jobs is not None:
+                # Reserva el escritor antes de contar, también entre procesos.
+                self._connection.execute("BEGIN IMMEDIATE")
+                if self._pending_count() >= max_pending_jobs:
+                    raise JobQueueFullError("La cola de transcripción está llena.")
             self._connection.execute(
                 """
                 INSERT INTO transcription_jobs
@@ -104,6 +115,17 @@ class SqliteJobStore:
                 self._as_row(job),
             )
         return job
+
+    def has_capacity(self, max_pending_jobs: int) -> bool:
+        with self._lock:
+            return self._pending_count() < max_pending_jobs
+
+    def _pending_count(self) -> int:
+        return self._connection.execute(
+            "SELECT COUNT(*) FROM transcription_jobs WHERE status IN (?, ?, ?)",
+            (JobStatus.QUEUED.value, JobStatus.DOWNLOADING.value,
+             JobStatus.TRANSCRIBING.value),
+        ).fetchone()[0]
 
     def get(self, job_id: str) -> StoredJob | None:
         with self._lock:

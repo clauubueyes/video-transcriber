@@ -34,7 +34,7 @@ No añadas un disco ni un worker separado para esta prueba.
 - `/` debe mostrar la interfaz sin pedir el token privado.
 - Sube primero un audio corto MP3, WAV o M4A inferior a 25 MB y comprueba
   que el trabajo llega a `completed` y muestra texto.
-- Después prueba una URL de YouTube de menos de 10 minutos. Si YouTube
+- Después prueba una URL de YouTube de menos de una hora. Si YouTube
   bloquea la IP del centro de datos, la subida directa permite comprobar
   la transcripción independientemente del acceso a YouTube.
 
@@ -260,12 +260,34 @@ peticiones. SQLite, trabajos, resultados y archivos temporales se pierden
 al suspenderse, reiniciarse o redesplegarse; descarga los resultados que quieras
 conservar. El siguiente acceso puede tardar aproximadamente un minuto.
 
-El Blueprint limita las subidas a 25 MB, los vídeos remotos a 10 minutos,
-la concurrencia a un trabajo y la cuota pública a 10 trabajos por hora.
-La duración no garantiza que el audio descargado de YouTube ocupe menos de
-25 MB: Groq puede rechazarlo si supera su límite. Groq también tiene sus
-propias cuotas; usa una cuenta Free si quieres mantener esta prueba gratuita.
+El Blueprint limita las subidas a 25 MB, los vídeos remotos a una hora,
+la concurrencia a un trabajo, el total de trabajos pendientes y activos a cinco,
+y la cuota pública a 10 trabajos por hora. Si la cola se llena, devuelve HTTP 503
+con `Retry-After: 30` antes de copiar archivos o consultar metadatos de YouTube.
+La admisión se vuelve a comprobar de forma atómica al registrar el trabajo.
+
+El envío a Groq lee bloques de 64 KB. Los archivos de al menos 20 MB y los
+formatos MP4, WebM, AAC y Opus se preparan con FFmpeg como FLAC mono a 16 kHz.
+Se procesa un fragmento de hasta 10 minutos cada vez, con contexto en los
+bordes, y se elimina antes de crear el siguiente. Las marcas de tiempo del
+resultado se ajustan al vídeo completo. Esto permite procesar audio descargado
+de más de 25 MB sin enviar un archivo de ese tamaño a Groq.
+
+Groq conserva sus propias cuotas; dividir el audio no amplía los segundos de
+audio permitidos por hora o por día. Usa una cuenta Free si quieres mantener
+esta prueba gratuita.
 El audio sin subtítulos y los archivos subidos se envían a Groq para inferencia.
+
+Para un servicio existente, cambia en **Render > Environment**
+`VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS=3600`,
+`VIDEO_TRANSCRIBER_MAX_PENDING_JOBS=5`,
+`VIDEO_TRANSCRIBER_GROQ_CHUNK_SECONDS=600` y
+`VIDEO_TRANSCRIBER_GROQ_TIMEOUT_SECONDS=120`, y despliega estos cambios.
+Mantén `VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS=1` y un solo proceso de Uvicorn.
+Editar el `.env` local no cambia las variables de un servicio ya publicado.
+
+El análisis de memoria y las opciones para acelerar la transcripción están en
+[rendimiento.md](rendimiento.md).
 
 Documentación oficial:
 [Render Free](https://render.com/docs/free),

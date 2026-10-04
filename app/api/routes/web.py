@@ -63,10 +63,11 @@ def access_key(job_id: str, settings: Settings) -> str:
 
 def check_public_quota(request: Request, settings: Settings) -> str:
     """Aplica la cuota compartida de la web antes de procesar la entrada."""
-    global_limiter = getattr(request.app.state, "public_limiter", None)
-    if global_limiter is None:
-        global_limiter = TokenRateLimiter(settings.public_jobs_per_hour, 3600)
-        request.app.state.public_limiter = global_limiter
+    with request.app.state.runtime_lock:
+        global_limiter = getattr(request.app.state, "public_limiter", None)
+        if global_limiter is None:
+            global_limiter = TokenRateLimiter(settings.public_jobs_per_hour, 3600)
+            request.app.state.public_limiter = global_limiter
     if not global_limiter.allow("public"):
         raise HTTPException(429, "Estamos ocupados. Inténtalo más tarde.")
     identity = request.client.host if request.client else "unknown"

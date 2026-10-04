@@ -25,7 +25,7 @@ ni versiones este archivo.
 
 ```env
 VIDEO_TRANSCRIBER_TOKEN=un-secreto-local-largo
-VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS=1800
+VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS=3600
 VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS=1
 VIDEO_TRANSCRIBER_MAX_JOBS_PER_TOKEN=10
 VIDEO_TRANSCRIBER_RATE_LIMIT_WINDOW_SECONDS=3600
@@ -205,7 +205,8 @@ sin esperar a que un cliente vuelva a consultar el trabajo.
 
 ## Logs y privacidad
 
-Los logs son JSON y solo contienen evento, ID de trabajo, estado y duración.
+Los logs son JSON e incluyen evento, ID de trabajo, estado, duración del audio
+y `processing_seconds` al completar una transcripción.
 No incluyen tokens, URL de origen, audio ni texto transcrito.
 
 ## Pruebas

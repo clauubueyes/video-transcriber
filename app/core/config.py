@@ -23,9 +23,10 @@ class Settings(BaseSettings):
 
     token: SecretStr
     allowed_domains: str = "youtube.com,www.youtube.com,youtu.be"
-    max_duration_seconds: int = Field(default=1800, ge=1)
+    max_duration_seconds: int = Field(default=3600, ge=1)
     result_ttl_seconds: int = Field(default=86400, ge=1)
     max_concurrent_jobs: int = Field(default=1, ge=1)
+    max_pending_jobs: int = Field(default=10, ge=1)
     database_path: Path = Path("data/transcriber.sqlite3")
     worker_poll_interval_seconds: float = Field(default=2, gt=0)
     stale_job_timeout_seconds: int = Field(default=7200, ge=1)
@@ -40,8 +41,12 @@ class Settings(BaseSettings):
     model_path: Path = Path("models/whisper-small")
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
+    whisper_cpu_threads: int = Field(default=2, ge=1)
+    whisper_beam_size: int = Field(default=5, ge=1)
     groq_api_key: SecretStr | None = None
     groq_model: str = "whisper-large-v3-turbo"
+    groq_chunk_seconds: int = Field(default=600, ge=30, le=600)
+    groq_timeout_seconds: int = Field(default=120, ge=1)
     youtube_cookie_file: Path | None = None
     youtube_player_clients: str | None = None
     youtube_po_token_server_home: Path | None = None

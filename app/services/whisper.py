@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from threading import Lock
 from typing import Protocol
 
 from app.models.transcriptions import Segment
@@ -25,6 +26,7 @@ class WhisperModel(Protocol):
         *,
         language: str | None,
         vad_filter: bool,
+        beam_size: int,
     ) -> tuple[Iterable[WhisperSegment], WhisperInfo]: ...
 
 
@@ -41,13 +43,18 @@ class FasterWhisperTranscriber:
         *,
         device: str = "cpu",
         compute_type: str = "int8",
+        cpu_threads: int = 2,
+        beam_size: int = 5,
         model_factory: Callable[[str, str, str], WhisperModel] | None = None,
     ) -> None:
         self._model_path = model_path
         self._device = device
         self._compute_type = compute_type
+        self._cpu_threads = cpu_threads
+        self._beam_size = beam_size
         self._model_factory = model_factory or self._default_model_factory
         self._model: WhisperModel | None = None
+        self._model_lock = Lock()
 
     def transcribe(
         self,
@@ -60,6 +67,7 @@ class FasterWhisperTranscriber:
             str(audio_path),
             language=requested_language,
             vad_filter=True,
+            beam_size=self._beam_size,
         )
         segments = [
             Segment(start=segment.start, end=segment.end, text=segment.text.strip())
@@ -74,6 +82,10 @@ class FasterWhisperTranscriber:
         )
 
     def _get_model(self) -> WhisperModel:
+        with self._model_lock:
+            return self._load_model()
+
+    def _load_model(self) -> WhisperModel:
         if self._model is None:
             if not self._model_path.is_dir():
                 raise LocalModelNotFoundError(
@@ -86,8 +98,8 @@ class FasterWhisperTranscriber:
             )
         return self._model
 
-    @staticmethod
     def _default_model_factory(
+        self,
         model_path: str,
         device: str,
         compute_type: str,
@@ -98,5 +110,7 @@ class FasterWhisperTranscriber:
             model_path,
             device=device,
             compute_type=compute_type,
+            cpu_threads=self._cpu_threads,
+            num_workers=1,
             local_files_only=True,
         )

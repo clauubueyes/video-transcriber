@@ -60,7 +60,7 @@ La interfaz web pública no solicita token. Las rutas bajo
 | --- | --- | --- |
 | `VIDEO_TRANSCRIBER_TOKEN` | Token requerido por la API privada. | Sin valor; obligatorio |
 | `VIDEO_TRANSCRIBER_ALLOWED_DOMAINS` | Dominios permitidos al importar URLs. | Dominios de YouTube |
-| `VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS` | Duración máxima para vídeos remotos. | `1800` |
+| `VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS` | Duración máxima para vídeos remotos. | `3600` |
 | `VIDEO_TRANSCRIBER_MODEL_PATH` | Ruta al modelo Whisper local. | `models/whisper-small` |
 | `VIDEO_TRANSCRIBER_WHISPER_DEVICE` | Dispositivo de inferencia. | `cpu` |
 | `VIDEO_TRANSCRIBER_WHISPER_COMPUTE_TYPE` | Tipo de cómputo de Whisper. | `int8` |

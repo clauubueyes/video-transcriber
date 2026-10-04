@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from time import monotonic
 from typing import Protocol
 
 from app.models.transcriptions import JobStatus, Segment, SourceType
@@ -67,6 +68,7 @@ class JobWorker:
             "job_claimed",
             extra={"job_id": job.id, "status": job.status.value},
         )
+        started_at = monotonic()
 
         try:
             active_job = self._store.update_status(job.id, JobStatus.TRANSCRIBING)
@@ -94,6 +96,7 @@ class JobWorker:
                         "job_id": completed_job.id,
                         "status": completed_job.status.value,
                         "duration_seconds": completed_job.duration_seconds,
+                        "processing_seconds": round(monotonic() - started_at, 3),
                     },
                 )
             return completed_job
@@ -104,7 +107,10 @@ class JobWorker:
             if isinstance(err, GroqAPIError):
                 msg = str(err)
             if "No existe un modelo local" in str(err):
-                msg = "No hay modelo local de Whisper. Configura VIDEO_TRANSCRIBER_GROQ_API_KEY en .env para transcripción gratuita en la nube."
+                msg = (
+                    "No hay modelo local de Whisper. Configura "
+                    "VIDEO_TRANSCRIBER_GROQ_API_KEY en .env para usar Groq."
+                )
             failed_job = self._store.update_status(
                 job.id,
                 JobStatus.FAILED,

@@ -3,7 +3,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.models.transcriptions import JobStatus, Segment, SourceType
-from app.storage.jobs import InvalidJobTransitionError, SqliteJobStore
+from app.storage.jobs import (
+    InvalidJobTransitionError,
+    JobQueueFullError,
+    SqliteJobStore,
+)
 
 
 @pytest.fixture
@@ -20,6 +24,42 @@ def test_store_creates_and_reads_a_queued_job(store: SqliteJobStore) -> None:
 
     assert job.id.startswith("trn_")
     assert restored == job
+
+
+def test_queue_capacity_counts_active_jobs_and_releases_failed_jobs(store):
+    job = store.create("https://youtu.be/first", None, max_pending_jobs=1)
+    store.claim_next_queued()
+    assert store.has_capacity(1) is False
+    with pytest.raises(JobQueueFullError):
+        store.create("https://youtu.be/second", None, max_pending_jobs=1)
+    store.update_status(job.id, JobStatus.FAILED)
+    assert store.has_capacity(1) is True
+    store.create("https://youtu.be/second", None, max_pending_jobs=1)
+
+
+def test_queue_admission_is_atomic_across_connections(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    database = tmp_path / "shared.sqlite3"
+    stores = [SqliteJobStore(database) for _ in range(4)]
+    barrier = Barrier(4)
+
+    def submit(store):
+        barrier.wait(timeout=2)
+        try:
+            store.create("https://youtu.be/test", None, max_pending_jobs=1)
+            return True
+        except JobQueueFullError:
+            return False
+
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            assert sum(executor.map(submit, stores)) == 1
+        assert stores[0].metrics().queued_jobs == 1
+    finally:
+        for store in stores:
+            store.close()
 
 
 def test_store_persists_file_source_type(store: SqliteJobStore) -> None:

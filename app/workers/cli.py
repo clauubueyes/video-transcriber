@@ -7,14 +7,8 @@ from time import sleep
 
 from app.core.config import Settings
 from app.core.logging import configure_logging
-from app.services.processor_factory import (
-    create_groq_file_processor,
-    create_groq_processor,
-    create_local_file_processor,
-    create_local_processor,
-)
+from app.services.processor_factory import create_processors
 from app.services.uploads import TemporaryUploadStore
-from app.services.ytdlp import youtube_download_options
 from app.storage.jobs import SqliteJobStore
 from app.workers.job_worker import (
     FileTranscriptionProcessor,
@@ -90,28 +84,7 @@ def main() -> int:
             "orphaned_uploads_removed",
             extra={"removed_uploads": removed_uploads},
         )
-    if settings.groq_api_key and settings.groq_api_key.get_secret_value():
-        api_key = settings.groq_api_key.get_secret_value()
-        processor = create_groq_processor(
-            api_key,
-            settings.groq_model,
-            cookie_file=settings.youtube_cookie_file,
-            download_options=youtube_download_options(settings),
-        )
-        file_processor = create_groq_file_processor(api_key, settings.groq_model)
-    else:
-        processor = create_local_processor(
-            settings.model_path,
-            device=settings.whisper_device,
-            compute_type=settings.whisper_compute_type,
-            cookie_file=settings.youtube_cookie_file,
-            download_options=youtube_download_options(settings),
-        )
-        file_processor = create_local_file_processor(
-            settings.model_path,
-            device=settings.whisper_device,
-            compute_type=settings.whisper_compute_type,
-        )
+    processor, file_processor = create_processors(settings)
     try:
         if arguments.once:
             run_once(settings, store, processor, file_processor)

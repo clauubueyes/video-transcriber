@@ -36,12 +36,7 @@ from app.services.network_validation import (
     UnsafeSourceHostError,
     validate_public_host,
 )
-from app.services.processor_factory import (
-    create_groq_file_processor,
-    create_groq_processor,
-    create_local_file_processor,
-    create_local_processor,
-)
+from app.services.processor_factory import create_processors
 from app.services.redirect_validation import (
     UnsafeRedirectError,
     validate_redirect_chain,
@@ -52,7 +47,7 @@ from app.services.source_validation import (
 )
 from app.services.uploads import TemporaryUploadStore, UploadValidationError
 from app.services.ytdlp import youtube_download_options
-from app.storage.jobs import SqliteJobStore, StoredJob
+from app.storage.jobs import JobQueueFullError, SqliteJobStore, StoredJob
 from app.workers.job_worker import JobWorker
 from app.workers.runner import BoundedJobRunner
 
@@ -77,40 +72,15 @@ def get_job_worker(
     job_store: SqliteJobStore = Depends(get_job_store),
 ) -> JobWorker:
     """Crea una única instancia local o de Groq del worker por proceso FastAPI."""
-    worker = getattr(request.app.state, "job_worker", None)
-    if worker is None:
-        groq_key = (
-            settings.groq_api_key.get_secret_value() if settings.groq_api_key else None
-        )
-        if groq_key:
-            processor = create_groq_processor(
-                groq_key,
-                settings.groq_model,
-                cookie_file=settings.youtube_cookie_file,
-                download_options=youtube_download_options(settings),
+    with request.app.state.runtime_lock:
+        worker = getattr(request.app.state, "job_worker", None)
+        if worker is None:
+            processor, file_processor = create_processors(settings)
+            worker = JobWorker(
+                job_store, processor, settings.result_ttl_seconds, file_processor,
             )
-            file_processor = create_groq_file_processor(groq_key, settings.groq_model)
-        else:
-            processor = create_local_processor(
-                settings.model_path,
-                device=settings.whisper_device,
-                compute_type=settings.whisper_compute_type,
-                cookie_file=settings.youtube_cookie_file,
-                download_options=youtube_download_options(settings),
-            )
-            file_processor = create_local_file_processor(
-                settings.model_path,
-                device=settings.whisper_device,
-                compute_type=settings.whisper_compute_type,
-            )
-        worker = JobWorker(
-            job_store,
-            processor,
-            settings.result_ttl_seconds,
-            file_processor,
-        )
-        request.app.state.job_worker = worker
-    return worker
+            request.app.state.job_worker = worker
+        return worker
 
 
 def get_video_duration_probe(
@@ -128,14 +98,14 @@ def get_token_rate_limiter(
     settings: Settings = Depends(get_settings),
 ) -> TokenRateLimiter:
     """Mantiene el límite de trabajos por token durante la vida del proceso."""
-    limiter = getattr(request.app.state, "token_rate_limiter", None)
-    if limiter is None:
-        limiter = TokenRateLimiter(
-            settings.max_jobs_per_token,
-            settings.rate_limit_window_seconds,
-        )
-        request.app.state.token_rate_limiter = limiter
-    return limiter
+    with request.app.state.runtime_lock:
+        limiter = getattr(request.app.state, "token_rate_limiter", None)
+        if limiter is None:
+            limiter = TokenRateLimiter(
+                settings.max_jobs_per_token, settings.rate_limit_window_seconds,
+            )
+            request.app.state.token_rate_limiter = limiter
+        return limiter
 
 
 def get_public_host_validator() -> Callable[[str], object]:
@@ -159,15 +129,30 @@ def get_job_runner(
     """Devuelve el ejecutor local limitado para esta instancia de la API."""
     if not settings.process_jobs_in_api:
         return None
-    runner = getattr(request.app.state, "job_runner", None)
-    if runner is None:
-        job_store.requeue_stale_active_jobs(
-            datetime.now(UTC)
-            - timedelta(seconds=settings.stale_job_timeout_seconds)
-        )
-        runner = BoundedJobRunner(worker, settings.max_concurrent_jobs)
-        request.app.state.job_runner = runner
-    return runner
+    with request.app.state.runtime_lock:
+        runner = getattr(request.app.state, "job_runner", None)
+        if runner is None:
+            job_store.requeue_stale_active_jobs(
+                datetime.now(UTC)
+                - timedelta(seconds=settings.stale_job_timeout_seconds)
+            )
+            runner = BoundedJobRunner(worker, settings.max_concurrent_jobs)
+            request.app.state.job_runner = runner
+        return runner
+
+
+def ensure_queue_capacity(store: SqliteJobStore, settings: Settings) -> None:
+    """Evita operaciones costosas cuando ya está llena la cola."""
+    if not store.has_capacity(settings.max_pending_jobs):
+        raise queue_full_response()
+
+
+def queue_full_response() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail="La cola está llena. Espera a que termine alguna transcripción.",
+        headers={"Retry-After": "30"},
+    )
 
 
 @router.get(
@@ -238,6 +223,7 @@ def create_transcription(
     redirect_validator: Callable[[str], str] = Depends(get_redirect_validator),
 ) -> TranscriptionJobResponse:
     """Registra un trabajo validado para su ejecución posterior."""
+    ensure_queue_capacity(job_store, settings)
     try:
         validate_allowed_source(payload.source.url, settings.allowed_domain_set)
     except SourceNotAllowedError as error:
@@ -278,10 +264,16 @@ def create_transcription(
     if duration > settings.max_duration_seconds:
         raise HTTPException(
             status_code=400,
-            detail="El vídeo supera el límite de duración para importar.",
+            detail=("El vídeo supera el límite de duración para importar: "
+                    f"{settings.max_duration_seconds / 60:g} min."),
         )
 
-    job = job_store.create(source_url, payload.language)
+    try:
+        job = job_store.create(
+            source_url, payload.language, max_pending_jobs=settings.max_pending_jobs,
+        )
+    except JobQueueFullError as error:
+        raise queue_full_response() from error
     if runner is not None:
         background_tasks.add_task(runner.run_pending)
     return _to_response(job)
@@ -305,6 +297,7 @@ def create_uploaded_transcription(
     rate_limiter: TokenRateLimiter = Depends(get_token_rate_limiter),
 ) -> TranscriptionJobResponse:
     """Guarda un audio o vídeo local y lo encola para Whisper local."""
+    ensure_queue_capacity(job_store, settings)
     if not rate_limiter.allow(token_id):
         raise HTTPException(
             status_code=429,
@@ -318,7 +311,13 @@ def create_uploaded_transcription(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
     try:
-        job = job_store.create(str(source_path), language, source_type=SourceType.FILE)
+        job = job_store.create(
+            str(source_path), language, source_type=SourceType.FILE,
+            max_pending_jobs=settings.max_pending_jobs,
+        )
+    except JobQueueFullError as error:
+        source_path.unlink(missing_ok=True)
+        raise queue_full_response() from error
     except Exception:
         source_path.unlink(missing_ok=True)
         raise

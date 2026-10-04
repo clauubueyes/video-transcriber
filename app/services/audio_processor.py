@@ -2,10 +2,16 @@
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Protocol
 
 from app.services.audio import AudioFetcher
-from app.services.whisper import FasterWhisperTranscriber
 from app.workers.job_worker import TranscriptionResult
+
+
+class AudioTranscriber(Protocol):
+    def transcribe(
+        self, audio_path: Path, requested_language: str | None,
+    ) -> TranscriptionResult: ...
 
 
 class AudioWhisperProcessor:
@@ -14,7 +20,7 @@ class AudioWhisperProcessor:
     def __init__(
         self,
         audio_fetcher: AudioFetcher,
-        transcriber: FasterWhisperTranscriber,
+        transcriber: AudioTranscriber,
     ) -> None:
         self._audio_fetcher = audio_fetcher
         self._transcriber = transcriber

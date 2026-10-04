@@ -28,11 +28,13 @@ class FakeModel:
         *,
         language: str | None,
         vad_filter: bool,
+        beam_size: int,
     ) -> tuple[list[FakeSegment], FakeInfo]:
         self.calls += 1
         assert audio.endswith("video.m4a")
         assert language == "es"
         assert vad_filter is True
+        assert beam_size == 5
         return [FakeSegment(0, 1.5, " Hola ")], FakeInfo("es")
 
 
@@ -70,3 +72,29 @@ def test_transcriber_requires_preinstalled_local_model(tmp_path) -> None:
 
     with pytest.raises(LocalModelNotFoundError, match="modelo local"):
         transcriber.transcribe(audio_path, "es")
+
+
+def test_concurrent_first_use_loads_only_one_model(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from time import sleep
+
+    model = FakeModel()
+    loads = []
+    barrier = Barrier(4)
+
+    def factory(*args):
+        loads.append(args)
+        sleep(0.02)
+        return model
+
+    transcriber = FasterWhisperTranscriber(tmp_path, model_factory=factory)
+
+    def load(_):
+        barrier.wait(timeout=2)
+        return transcriber._get_model()
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        models = list(executor.map(load, range(4)))
+    assert all(instance is model for instance in models)
+    assert len(loads) == 1

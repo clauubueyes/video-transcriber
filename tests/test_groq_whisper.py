@@ -1,12 +1,18 @@
 """Pruebas unitarias del adaptador de Groq Whisper API."""
 
 import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from threading import Thread
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.groq_whisper import GroqAPIError, GroqWhisperTranscriber
+from app.services.groq_whisper import (
+    GroqAPIError,
+    GroqWhisperTranscriber,
+    StreamingMultipart,
+)
 
 
 def test_groq_whisper_transcribe_success(tmp_path: Path):
@@ -57,4 +63,149 @@ def test_groq_auth_error_is_safe_and_request_has_user_agent(tmp_path):
         with pytest.raises(GroqAPIError, match="Groq rechaza la clave") as caught:
             GroqWhisperTranscriber("secret").transcribe(audio, None)
     assert "private provider response" not in str(caught.value)
-    assert request.call_args.args[0].get_header("User-agent") == "video-transcriber/0.1.0"
+    assert (
+        request.call_args.args[0].get_header("User-agent") == "video-transcriber/0.1.0"
+    )
+
+
+def test_multipart_stream_limits_audio_reads_and_is_repeatable(tmp_path):
+    audio = tmp_path / "sample.mp3"
+    audio.write_bytes(b"a" * 200_000)
+    body = StreamingMultipart(b"prefix", audio, b"suffix")
+
+    for _ in range(2):
+        blocks = list(body)
+        assert max(map(len, blocks)) <= 64 * 1024
+        assert sum(map(len, blocks)) == body.content_length
+        assert b"".join(blocks) == b"prefix" + b"a" * 200_000 + b"suffix"
+
+
+def test_streamed_request_works_over_http_with_content_length(tmp_path):
+    """Comprueba urllib/http.client reales, sin enviar datos a un proveedor."""
+    audio = tmp_path / "sample.mp3"
+    audio.write_bytes(b"synthetic audio" * 12_000)
+    received = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            received["length"] = int(self.headers["Content-Length"])
+            received["transfer_encoding"] = self.headers.get("Transfer-Encoding")
+            received["body"] = self.rfile.read(received["length"])
+            payload = json.dumps({"text": "Hola", "duration": 1}).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}/transcriptions"
+        result = GroqWhisperTranscriber(
+            "test-key", endpoint=endpoint, timeout_seconds=2,
+        ).transcribe(audio, "es")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+    assert result.text == "Hola"
+    assert received["transfer_encoding"] is None
+    assert len(received["body"]) == received["length"]
+    assert b"synthetic audio" * 12_000 in received["body"]
+    assert b'name="language"\r\n\r\nes\r\n' in received["body"]
+    assert b"Bearer test-key" not in received["body"]
+
+
+def test_large_audio_is_processed_sequentially_with_global_timestamps(tmp_path):
+    from types import SimpleNamespace
+
+    audio = tmp_path / "long.wav"
+    with audio.open("wb") as source:
+        source.truncate(25_000_001)
+    conversions = []
+    uploaded = []
+
+    def run(command, **kwargs):
+        if command[0] == "ffprobe":
+            return SimpleNamespace(stdout="125\n")
+        target = Path(command[-1])
+        assert not target.exists()  # El bloque anterior se eliminó.
+        assert command[command.index("-ar") + 1] == "16000"
+        assert command[command.index("-ac") + 1] == "1"
+        assert command[command.index("-c:a") + 1] == "flac"
+        conversions.append((float(command[command.index("-ss") + 1]),
+                            float(command[command.index("-t") + 1])))
+        target.write_bytes(b"prepared audio")
+        return SimpleNamespace(returncode=0)
+
+    def upload(request, **kwargs):
+        body = b"".join(request.data)
+        uploaded.append(body)
+        assert b"prepared audio" in body
+        assert b'name="language"' not in body
+        index = len(uploaded) - 1
+        payload = {
+            "language": "Spanish", "duration": 62,
+            "segments": [
+                {"start": 0, "end": 0.5, "text": "Solape"},
+                {"start": 1, "end": 2, "text": f"Parte {index}"},
+            ],
+        }
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = json.dumps(payload).encode()
+        return response
+
+    with (
+        patch("app.services.groq_whisper.subprocess.run", side_effect=run),
+        patch("urllib.request.urlopen", side_effect=upload),
+    ):
+        result = GroqWhisperTranscriber(
+            "test-key", chunk_seconds=60,
+        ).transcribe(audio, None)
+
+    assert conversions == [(0, 61), (59, 62), (119, 6)]
+    assert len(uploaded) == 3
+    assert result.duration_seconds == 125
+    assert result.language == "Spanish"
+    assert result.text == "Solape Parte 0 Parte 1 Parte 2"
+    assert [segment.start for segment in result.segments] == [0, 1, 60, 120]
+    assert [segment.end for segment in result.segments] == [0.5, 2, 61, 121]
+    assert not list(tmp_path.glob("*.flac"))
+
+
+@pytest.mark.parametrize("duration", ["nan", "inf", "0", "N/A"])
+def test_invalid_audio_duration_is_rejected_safely(tmp_path, duration):
+    from types import SimpleNamespace
+
+    with patch("app.services.groq_whisper.subprocess.run",
+               return_value=SimpleNamespace(stdout=duration)):
+        with pytest.raises(GroqAPIError, match="No se puede leer el audio"):
+            GroqWhisperTranscriber._get_duration(tmp_path / "audio.wav")
+
+
+def test_conversion_failure_removes_partial_audio(tmp_path):
+    import subprocess
+
+    audio = tmp_path / "video.mp4"
+    audio.write_bytes(b"video")
+    converted_paths = []
+
+    def convert(source, target, offset, length):
+        target.write_bytes(b"partial audio")
+        converted_paths.append(target)
+        raise subprocess.TimeoutExpired("ffmpeg", 180)
+
+    transcriber = GroqWhisperTranscriber("test-key")
+    with (
+        patch.object(transcriber, "_get_duration", return_value=60),
+        patch.object(transcriber, "_convert_chunk", side_effect=convert),
+        pytest.raises(subprocess.TimeoutExpired),
+    ):
+        transcriber.transcribe(audio, "es")
+    assert all(not path.exists() for path in converted_paths)
+    assert audio.exists()

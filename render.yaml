@@ -33,10 +33,16 @@ services:
         value: "true"
       - key: VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS
         value: "1"
+      - key: VIDEO_TRANSCRIBER_MAX_PENDING_JOBS
+        value: "5"
+      - key: VIDEO_TRANSCRIBER_GROQ_CHUNK_SECONDS
+        value: "600"
+      - key: VIDEO_TRANSCRIBER_GROQ_TIMEOUT_SECONDS
+        value: "120"
       - key: VIDEO_TRANSCRIBER_MAX_UPLOAD_BYTES
         value: "25000000"
       - key: VIDEO_TRANSCRIBER_MAX_DURATION_SECONDS
-        value: "600"
+        value: "3600"
       - key: VIDEO_TRANSCRIBER_PUBLIC_JOBS_PER_HOUR
         value: "10"
       - key: VIDEO_TRANSCRIBER_MAX_JOBS_PER_TOKEN

@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from threading import RLock
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +22,7 @@ def create_app(database_path: str | Path = "data/transcriber.sqlite3") -> FastAP
         description="Servicio autoalojable de transcripción local.",
     )
     app.state.job_store = SqliteJobStore(database_path)
+    app.state.runtime_lock = RLock()
     # CORS es optativo; no requiere cargar el token para arrancar /health.
     origins = [
         origin.strip()

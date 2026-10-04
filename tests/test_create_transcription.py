@@ -71,6 +71,95 @@ def test_create_transcription_queues_a_valid_youtube_job(tmp_path) -> None:
     assert response.json()["language"] == "es"
 
 
+def test_create_transcription_accepts_one_hour_and_rejects_longer_video(tmp_path):
+    client = client_with_settings(tmp_path)
+    probe = FixedDurationProbe(3600)
+    client.app.dependency_overrides[get_video_duration_probe] = lambda: probe
+    payload = {"source": {"type": "url", "url": "https://youtu.be/abc"}}
+    headers = {"Authorization": "Bearer test-token"}
+    assert client.post("/v1/transcriptions", json=payload,
+                       headers=headers).status_code == 202
+    probe.duration = 3601
+    response = client.post("/v1/transcriptions", json=payload, headers=headers)
+    assert response.status_code == 400
+    assert "60 min." in response.json()["detail"]
+
+
+def test_full_queue_rejects_urls_before_network_and_uploads_before_copy(tmp_path):
+    from unittest.mock import Mock
+
+    client = client_with_settings(tmp_path)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        token="test-token", max_pending_jobs=1,
+        temporary_directory=tmp_path / "uploads", _env_file=None,
+    )
+    client.app.state.job_store.create("https://youtu.be/pending", None)
+    probe = Mock()
+    client.app.dependency_overrides[get_video_duration_probe] = lambda: probe
+    headers = {"Authorization": "Bearer test-token"}
+    response = client.post("/v1/transcriptions", headers=headers, json={
+        "source": {"type": "url", "url": "https://youtu.be/abc"},
+    })
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    probe.get_duration_seconds.assert_not_called()
+    response = client.post("/v1/transcriptions/upload", headers=headers,
+                           files={"file": ("audio.mp3", b"audio", "audio/mpeg")})
+    assert response.status_code == 503
+    assert not (tmp_path / "uploads").exists()
+
+
+def test_upload_is_removed_when_another_request_fills_the_queue(tmp_path):
+    from unittest.mock import patch
+
+    from app.storage.jobs import JobQueueFullError
+
+    client = client_with_settings(tmp_path)
+    with patch.object(client.app.state.job_store, "create",
+                      side_effect=JobQueueFullError()):
+        response = client.post(
+            "/v1/transcriptions/upload",
+            headers={"Authorization": "Bearer test-token"},
+            files={"file": ("audio.mp3", b"audio", "audio/mpeg")},
+        )
+    assert response.status_code == 503
+    assert not list((tmp_path / "uploads").iterdir())
+
+
+def test_concurrent_requests_share_one_worker_and_one_runner(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from time import sleep
+    from unittest.mock import patch
+
+    from fastapi import Request
+
+    from app.api.routes.transcriptions import get_job_runner
+
+    app = create_app(tmp_path / "jobs.sqlite3")
+    request = Request({"type": "http", "app": app})
+    settings = Settings(token="test-token", _env_file=None)
+    barrier = Barrier(4)
+
+    def processors(_):
+        sleep(0.02)
+        return object(), object()
+
+    def initialize(_):
+        barrier.wait(timeout=2)
+        worker = get_job_worker(request, settings, app.state.job_store)
+        runner = get_job_runner(request, settings, worker, app.state.job_store)
+        return worker, runner
+
+    with patch("app.api.routes.transcriptions.create_processors",
+               side_effect=processors) as factory:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(initialize, range(4)))
+    assert len({id(worker) for worker, _ in results}) == 1
+    assert len({id(runner) for _, runner in results}) == 1
+    assert factory.call_count == 1
+
+
 def test_create_transcription_schedules_the_local_worker(tmp_path) -> None:
     app = create_app(tmp_path / "jobs.sqlite3")
     worker = RecordingWorker()
@@ -201,7 +290,7 @@ def test_create_transcription_rejects_videos_over_duration_limit(tmp_path) -> No
 
     assert response.status_code == 400
     assert response.json() == {
-        "detail": "El vídeo supera el límite de duración para importar."
+        "detail": "El vídeo supera el límite de duración para importar: 1 min."
     }
 
 

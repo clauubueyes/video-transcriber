@@ -2,6 +2,7 @@
 
 import logging
 import re
+import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -57,10 +58,15 @@ def youtube_download_options(settings: Settings) -> dict[str, Any]:
         ]
         if clients:
             extractor_args["youtube"] = {"player_client": clients}
-    if settings.youtube_po_token_server_home:
+    if settings.youtube_po_token_base_url or settings.youtube_po_token_server_home:
         extractor_args.setdefault("youtube", {})["fetch_pot"] = [
             settings.youtube_po_token_policy,
         ]
+    if settings.youtube_po_token_base_url:
+        extractor_args["youtubepot-bgutilhttp"] = {
+            "base_url": [settings.youtube_po_token_base_url],
+        }
+    elif settings.youtube_po_token_server_home:
         extractor_args["youtubepot-bgutilscript"] = {
             "server_home": [str(settings.youtube_po_token_server_home)],
         }
@@ -88,6 +94,11 @@ def youtube_dl(
     try:
         with _youtube_dl(options, cookie_file) as ydl:
             yield ydl
+    except subprocess.TimeoutExpired:
+        logger.warning("youtube_provider_timeout")
+        raise DownloadError(
+            "El proveedor de YouTube agotó el tiempo de espera.",
+        ) from None
     except DownloadError as error:
         safe_message = _redact(str(error), options.get("proxy"))
         if safe_message != str(error):

@@ -43,8 +43,10 @@ No añadas un disco ni un worker separado para esta prueba.
 El contenedor incluye Deno y `yt-dlp[default]` (con los scripts EJS) para
 resolver los desafíos JavaScript de YouTube. También incluye Node y
 `bgutil-ytdlp-pot-provider` 2.0.1 con su generador de PO Tokens de la misma
-versión. Se ejecuta como script cuando yt-dlp lo necesita, sin añadir otro
-servicio de Render. Usa los clientes `mweb,tv,web_safari`, siguiendo la
+versión. El entrypoint de Docker mantiene su servidor HTTP activo en
+`127.0.0.1:4416`, dentro del mismo contenedor y sin añadir otro servicio de
+Render. Espera hasta dos minutos a que esté listo antes de arrancar la API o el
+worker. Usa los clientes `mweb,tv,web_safari`, siguiendo la
 [guía PO Token de yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide)
 y las [instrucciones del proveedor](https://github.com/Brainicism/bgutil-ytdlp-pot-provider).
 La generación de tokens y la descarga usan la misma salida de red.
@@ -78,6 +80,7 @@ panel; no depende de que Render vuelva a importar `render.yaml`:
 VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS=mweb,tv,web_safari
 VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME=/opt/bgutil/server
 VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_POLICY=always
+VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_BASE_URL=http://127.0.0.1:4416
 ```
 
 Si ya existen estas variables en Render, sus valores prevalecen sobre Docker.
@@ -93,14 +96,19 @@ Al pegar una URL, los logs pueden mostrar:
   por sí solo no confirma que se haya generado ni aceptado.
   El contexto `player` identifica consultas de formatos, `gvs` la descarga y
   `subs` los subtítulos.
+- `youtube_po_token_provider_ready`: el servidor local está listo. Se arranca
+  una vez y se reutiliza para evitar el timeout de 15 segundos del método
+  script, que se ha observado en Render Free.
 - `youtube_provider_warning` / `youtube_provider_error`: avisos del extractor,
   incluidos fallos del proveedor o de EJS. No se registran valores de los tokens
   ni credenciales del proxy.
 - `youtube_subtitles_failed`: YouTube rechazó los subtítulos y se intenta
   transcribir el audio. Antes este fallo interrumpía el trabajo.
 
-El plugin puede comprobar primero un proveedor HTTP en localhost:4416 y
-continuar con el script configurado. No es necesario abrir ese puerto.
+No expongas el puerto 4416 a Internet: el servicio solo escucha en localhost.
+Para ejecución sin Docker puedes usar un proveedor HTTP ya arrancado con
+`VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_BASE_URL`, o el método script configurando
+solo `VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME`. En Render se utiliza HTTP.
 
 ### Si la IP de Render sigue bloqueada
 

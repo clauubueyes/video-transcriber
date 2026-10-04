@@ -26,6 +26,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS=mweb,tv,web_safari \
     VIDEO_TRANSCRIBER_YOUTUBE_IMPERSONATE=chrome \
     VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_POLICY=always \
+    VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_BASE_URL=http://127.0.0.1:4416 \
     VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME=/opt/bgutil/server
 
 WORKDIR /app
@@ -48,4 +49,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/ready', timeout=3)"
 
+ENTRYPOINT ["python", "-m", "app.container_entrypoint"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

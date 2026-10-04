@@ -169,6 +169,32 @@ def test_browser_profile_uses_ytdlp_impersonation_target():
     assert options["impersonate"] == ImpersonateTarget(client="chrome")
 
 
+def test_http_provider_does_not_enable_slow_script(tmp_path):
+    options = youtube_download_options(Settings(
+        token="test", _env_file=None, youtube_po_token_server_home=tmp_path,
+        youtube_po_token_base_url="http://127.0.0.1:4416",
+        youtube_po_token_policy="always",
+    ))
+    assert options["extractor_args"]["youtubepot-bgutilhttp"] == {
+        "base_url": ["http://127.0.0.1:4416"],
+    }
+    assert "youtubepot-bgutilscript" not in options["extractor_args"]
+
+
+def test_provider_timeout_is_download_error_without_command_secrets(monkeypatch):
+    import subprocess
+    from contextlib import nullcontext
+
+    from yt_dlp.utils import DownloadError
+
+    monkeypatch.setattr("app.services.ytdlp.YoutubeDL", lambda opts: nullcontext())
+    with pytest.raises(DownloadError) as caught:
+        with youtube_dl({}):
+            raise subprocess.TimeoutExpired(["node", "--proxy", "private-secret"], 15)
+    assert "private-secret" not in str(caught.value)
+    assert caught.value.__suppress_context__ is True
+
+
 @pytest.mark.parametrize("operation", ["metadata", "audio", "subtitles"])
 def test_access_options_reach_all_youtube_operations(operation, tmp_path, monkeypatch):
     from app.services.audio import YtDlpAudioFetcher

@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     youtube_cookie_file: Path | None = None
     youtube_player_clients: str | None = None
     youtube_po_token_server_home: Path | None = None
+    youtube_po_token_base_url: str | None = None
     youtube_proxy_url: SecretStr | None = None
     youtube_impersonate: str | None = None
     youtube_po_token_policy: Literal["auto", "always", "never"] = "auto"

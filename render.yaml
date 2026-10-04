@@ -23,6 +23,8 @@ services:
         value: chrome
       - key: VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_POLICY
         value: always
+      - key: VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_BASE_URL
+        value: http://127.0.0.1:4416
       - key: VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME
         value: /opt/bgutil/server
       - key: VIDEO_TRANSCRIBER_PROCESS_JOBS_IN_API

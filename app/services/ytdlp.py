@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from yt_dlp import YoutubeDL
+from yt_dlp.networking.impersonate import ImpersonateTarget
 from yt_dlp.utils import DownloadError
 
 from app.core.config import Settings
@@ -57,6 +58,10 @@ def youtube_download_options(settings: Settings) -> dict[str, Any]:
         }
     if extractor_args:
         options["extractor_args"] = extractor_args
+    if settings.youtube_impersonate:
+        options["impersonate"] = ImpersonateTarget.from_str(
+            settings.youtube_impersonate,
+        )
     if settings.youtube_proxy_url:
         proxy = settings.youtube_proxy_url.get_secret_value().strip()
         if proxy:

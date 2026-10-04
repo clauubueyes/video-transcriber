@@ -24,6 +24,7 @@ COPY --from=pot-builder /opt/bgutil/server/package.json /opt/bgutil/server/packa
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VIDEO_TRANSCRIBER_YOUTUBE_PLAYER_CLIENTS=mweb,tv,web_safari \
+    VIDEO_TRANSCRIBER_YOUTUBE_IMPERSONATE=chrome \
     VIDEO_TRANSCRIBER_YOUTUBE_PO_TOKEN_SERVER_HOME=/opt/bgutil/server
 
 WORKDIR /app

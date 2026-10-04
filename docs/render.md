@@ -48,6 +48,11 @@ servicio de Render. Usa los clientes `mweb,tv,web_safari`, siguiendo la
 [guía PO Token de yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide)
 y las [instrucciones del proveedor](https://github.com/Brainicism/bgutil-ytdlp-pot-provider).
 La generación de tokens y la descarga usan la misma salida de red.
+El contenedor incluye `curl-cffi` y usa un perfil HTTP/TLS de Chrome mediante
+`VIDEO_TRANSCRIBER_YOUTUBE_IMPERSONATE=chrome`, conforme a la
+[configuración de impersonación de yt-dlp](https://github.com/yt-dlp/yt-dlp#impersonation).
+Esto permite probar un perfil de navegador; tampoco garantiza resolver un
+rechazo de la IP.
 
 Si aparece `Failed to extract
 any player response`, sube estos cambios y ejecuta **Manual Deploy > Clear

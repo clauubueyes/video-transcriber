@@ -158,6 +158,15 @@ def test_proxy_credentials_are_redacted_in_provider_exception(monkeypatch):
     assert caught.value.__suppress_context__ is True
 
 
+def test_browser_profile_uses_ytdlp_impersonation_target():
+    from yt_dlp.networking.impersonate import ImpersonateTarget
+
+    options = youtube_download_options(Settings(
+        token="test", _env_file=None, youtube_impersonate="chrome",
+    ))
+    assert options["impersonate"] == ImpersonateTarget(client="chrome")
+
+
 @pytest.mark.parametrize("operation", ["metadata", "audio", "subtitles"])
 def test_access_options_reach_all_youtube_operations(operation, tmp_path, monkeypatch):
     from app.services.audio import YtDlpAudioFetcher

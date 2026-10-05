@@ -5,8 +5,10 @@ de audio y vídeo. Primero intenta aprovechar los subtítulos disponibles; si no
 los hay, usa un modelo local compatible con `faster-whisper`.
 
 Incluye una interfaz web en `http://127.0.0.1:8000/`, una API FastAPI, trabajos
-asíncronos guardados en SQLite y un worker opcional. No utiliza APIs de IA
-remotas ni descarga modelos de Whisper automáticamente.
+asíncronos guardados en SQLite y un worker opcional. La transcripción puede usar
+Whisper local o Groq si se configura su clave. También permite extraer una receta
+estructurada desde el texto mediante Groq, para integrarla en Abuelas Kitchen.
+No descarga modelos de Whisper automáticamente.
 
 ## Requisitos
 
@@ -133,6 +135,27 @@ Invoke-RestMethod -Method Post `
 
 En PowerShell 5.1, que no admite `-Form`, puede usarse `curl.exe -F` con la
 misma cabecera de autorización.
+
+## Extraer una receta desde la transcripción
+
+Abuelas Kitchen solicita `POST /web/jobs/{id}/recipe` cuando termina el trabajo,
+con su cabecera `X-Job-Key`. El servidor usa el texto guardado en SQLite para
+extraer título, descripción, ingredientes, cantidades, pasos, etiquetas y los
+tiempos y raciones mencionados. Los datos ausentes quedan vacíos o en `null`.
+No vuelve a descargar ni transcribir el vídeo. La receta se conserva con el
+mismo trabajo y se elimina al caducar o borrar ese resultado.
+
+Se requiere `VIDEO_TRANSCRIBER_GROQ_API_KEY` o la clave independiente
+`VIDEO_TRANSCRIBER_RECIPE_API_KEY`, exclusivamente en el servidor. El modelo
+por defecto es `openai/gpt-oss-20b`, configurable mediante
+`VIDEO_TRANSCRIBER_RECIPE_MODEL`; debe admitir
+[salidas estructuradas estrictas de Groq](https://console.groq.com/docs/structured-outputs).
+La extracción envía la transcripción a Groq y consume su cuota de texto.
+Puede desactivarse con `VIDEO_TRANSCRIBER_RECIPE_EXTRACTION_ENABLED=false`.
+
+Consulta [docs/recetas.md](docs/recetas.md) para los límites y la API. La receta
+extraída debe revisarse antes de guardarla: el modelo puede interpretar mal
+cantidades o palabras de una transcripción imprecisa.
 
 ## Worker separado
 

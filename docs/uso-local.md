@@ -151,8 +151,10 @@ y la cabecera `Authorization: Bearer ...`.
    `expired` y se elimina texto, segmentos y duración.
 
 Para archivos subidos, no se usa `yt-dlp`: Whisper recibe el fichero temporal
-directamente. Ningún paso de este flujo llama a OpenAI, Gemini ni otro proveedor
-de IA remoto.
+directamente. Cuando se configura `VIDEO_TRANSCRIBER_GROQ_API_KEY`, se utiliza
+Groq para transcribir el audio. La extracción de recetas es una solicitud
+adicional y opcional que envía únicamente el texto a Groq; consulta
+[recetas.md](recetas.md).
 
 El valor `VIDEO_TRANSCRIBER_MAX_CONCURRENT_JOBS` limita procesamientos locales
 simultáneos para no saturar CPU o GPU.

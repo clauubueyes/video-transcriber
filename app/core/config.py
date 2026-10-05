@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     groq_model: str = "whisper-large-v3-turbo"
     groq_chunk_seconds: int = Field(default=600, ge=30, le=600)
     groq_timeout_seconds: int = Field(default=120, ge=1)
+    recipe_extraction_enabled: bool = True
+    recipe_api_key: SecretStr | None = None
+    recipe_model: str = "openai/gpt-oss-20b"
+    recipe_timeout_seconds: int = Field(default=90, ge=1, le=110)
+    recipe_max_transcript_chars: int = Field(default=120_000, ge=1)
+    recipe_jobs_per_hour: int = Field(default=30, ge=1)
     youtube_cookie_file: Path | None = None
     youtube_player_clients: str | None = None
     youtube_po_token_server_home: Path | None = None

@@ -172,6 +172,27 @@ class SqliteJobStore:
             return False
         return True
 
+    def get_recipe(self, job_id: str) -> dict | None:
+        """Recupera una extracción mientras su transcripción siga disponible."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT recipe_json FROM transcription_jobs "
+                "WHERE id = ? AND status = ? AND expires_at > ?",
+                (job_id, JobStatus.COMPLETED.value, datetime.now(UTC).isoformat()),
+            ).fetchone()
+        return loads(row["recipe_json"]) if row and row["recipe_json"] else None
+
+    def save_recipe(self, job_id: str, recipe: dict) -> bool:
+        """Guarda la receta sin resucitar trabajos borrados o caducados."""
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "UPDATE transcription_jobs SET recipe_json = ? "
+                "WHERE id = ? AND status = ? AND expires_at > ?",
+                (dumps(recipe, ensure_ascii=False), job_id,
+                 JobStatus.COMPLETED.value, datetime.now(UTC).isoformat()),
+            )
+        return cursor.rowcount == 1
+
     def claim_next_queued(self) -> StoredJob | None:
         """Reclama el trabajo más antiguo pendiente para un único worker."""
         with self._lock, self._connection:
@@ -313,7 +334,7 @@ class SqliteJobStore:
                 UPDATE transcription_jobs
                 SET
                     status = ?, duration_seconds = NULL, transcript_text = NULL,
-                    segments_json = NULL, chapters_json = NULL,
+                    segments_json = NULL, chapters_json = NULL, recipe_json = NULL,
                     processing_seconds = NULL, processing_method = NULL,
                     expires_at = NULL, updated_at = ?
                 WHERE status = ? AND expires_at IS NOT NULL AND expires_at <= ?
@@ -442,6 +463,7 @@ class SqliteJobStore:
             "expires_at": "TEXT",
             "processing_seconds": "REAL",
             "processing_method": "TEXT",
+            "recipe_json": "TEXT",
         }
         with self._connection:
             for name, column_type in required_columns.items():
